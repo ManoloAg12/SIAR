@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIAR - Sistema de Riego Automático</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='image/icono.png') }}">
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#57B5E7',
+                        secondary: '#4ADE80'
+                    },
+                    borderRadius: {
+                        'button': '8px'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .tab-active {
+            background: linear-gradient(135deg, #57B5E7, #4ADE80);
+            color: white;
+        }
+        .form-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        .custom-checkbox {
+            appearance: none;
+            width: 1.25rem;
+            height: 1.25rem;
+            border: 2px solid #d1d5db;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            position: relative;
+        }
+        .custom-checkbox:checked {
+            background: #57B5E7;
+            border-color: #57B5E7;
+        }
+        .custom-checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 0.875rem;
+            font-weight: bold;
+        }
+        .custom-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+    </style>
+</head>
+<body class="min-h-screen" style="background-image: url('https://readdy.ai/api/search-image?query=modern%20automated%20irrigation%20system%20with%20smart%20sprinklers%20watering%20green%20crops%20in%20agricultural%20field%2C%20clean%20white%20background%20with%20soft%20blue%20and%20green%20gradients%2C%20professional%20technology%20atmosphere%2C%20high-tech%20farming%20equipment%2C%20water%20droplets%20sparkling%20in%20sunlight%2C%20peaceful%20rural%20landscape&width=1920&height=1080&seq=bg001&orientation=landscape'); background-size: cover; background-position: center; background-attachment: fixed;">
+    <div class="min-h-screen bg-gradient-to-br from-blue-50/90 via-green-50/90 to-blue-100/90 flex flex-col">
+        <header class="w-full py-6 px-4">
+            <div class="max-w-6xl mx-auto flex items-center justify-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-primary to-secondary rounded-xl">
+                        <i class="ri-plant-line text-2xl text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-['Pacifico'] text-3xl text-gray-800">SIAR</h1>
+                        <p class="text-sm text-gray-600">Sistema de Riego Automático</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 flex items-center justify-center px-4 py-8">
+            <div class="w-full max-w-md">
+                <div class="form-container rounded-2xl shadow-2xl p-8">
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            <div class="mb-4">
+                            {% for category, message in messages %}
+                                <div class="p-3 rounded-lg text-sm 
+                                    {% if category == 'success' %} bg-green-100 text-green-800 
+                                    {% elif category == 'danger' %} bg-red-100 text-red-800
+                                    {% else %} bg-blue-100 text-blue-800 {% endif %}"
+                                    role="alert">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endwith %}
+                    <div class="flex mb-8 bg-gray-100 rounded-lg p-1">
+                        <button id="loginTab" class="flex-1 py-3 px-4 text-sm font-medium rounded-md transition-all duration-300 whitespace-nowrap !rounded-button tab-active">
+                            <div class="w-5 h-5 flex items-center justify-center mr-2 inline-flex">
+                                <i class="ri-login-box-line"></i>
+                            </div>
+                            Iniciar Sesión
+                        </button>
+                        <button id="registerTab" class="flex-1 py-3 px-4 text-sm font-medium rounded-md transition-all duration-300 whitespace-nowrap !rounded-button text-gray-600">
+                            <div class="w-5 h-5 flex items-center justify-center mr-2 inline-flex">
+                                <i class="ri-user-add-line"></i>
+                            </div>
+                            Registrarse
+                        </button>
+                    </div>
+
+                    <form id="loginForm" class="space-y-6" method="POST" action="{{ url_for('main.login') }}">
+                        
+                        <input type="hidden" name="form_type" value="login">
+
+                        <div class="text-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">Bienvenido de vuelta</h2>
+                            <p class="text-gray-600">Accede a tu sistema de riego inteligente</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-user-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="text" id="username" name="nombre_usuario" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Usuario" required>
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-lock-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="password" id="password" name="password" class="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Contraseña" required>
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                    <div class="w-5 h-5 flex items-center justify-center password-toggle">
+                                        <i class="ri-eye-off-line text-gray-400" id="togglePassword"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-right">
+                            <a href="#" class="text-sm text-primary hover:text-primary/80 transition-colors">¿Olvidaste tu contraseña?</a>
+                        </div>
+
+                        <button type="submit" class="w-full bg-gradient-to-r from-primary to-secondary text-white py-3 px-4 rounded-lg font-medium hover:opacity-90 transition-all duration-300 whitespace-nowrap !rounded-button">
+                            Iniciar Sesión
+                        </button>
+
+                        <p class="text-center text-sm text-gray-600">
+                            ¿No tienes cuenta? 
+                            <button type="button" id="switchToRegister" class="text-primary hover:text-primary/80 font-medium transition-colors">Regístrate aquí</button>
+                        </p>
+                    </form>
+
+                    <form id="registerForm" class="space-y-6 hidden" method="POST" action="{{ url_for('main.login') }}">
+                        
+                        <input type="hidden" name="form_type" value="register">
+
+                        <div class="text-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">Crear cuenta nueva</h2>
+                            <p class="text-gray-600">Únete al futuro del riego inteligente</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-user-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="text" id="fullName" name="nombre_completo" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Nombre completo" required>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="w-5 h-5 flex items-center justify-center">
+                                            <i class="ri-mail-line text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                    <input type="email" id="email" name="email" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Correo electrónico" required>
+                                </div>
+
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="w-5 h-5 flex items-center justify-center">
+                                            <i class="ri-phone-line text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                    <input type="tel" id="phone" name="telefono" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Teléfono">
+                                </div>
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-map-pin-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="text" id="address" name="direccion" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Dirección">
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="w-5 h-5 flex items-center justify-center">
+                                            <i class="ri-building-line text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                    <input type="text" id="city" name="ciudad" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Ciudad">
+                                </div>
+
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="w-5 h-5 flex items-center justify-center">
+                                            <i class="ri-earth-line text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                    <select id="country" name="pais" class="w-full pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm custom-select" required>
+                                        <option value="">Seleccionar país</option>
+                                        <option value="SV">El Salvador</option>
+                                        <option value="GT">Guatemala</option>
+                                        <option value="HN">Honduras</option>
+                                        <option value="NI">Nicaragua</option>
+                                        <option value="CR">Costa Rica</option>
+                                        <option value="PA">Panamá</option>
+                                        <option value="MX">México</option>
+                                        <option value="ES">España</option>
+                                        <option value="US">Estados Unidos</option>
+                                        <option value="CO">Colombia</option>
+                                        <option value*="AR">Argentina</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-user-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="text" id="registerUsername" name="nombre_usuario" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Nombre de usuario" required>
+                            </div>
+
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <div class="w-5 h-5 flex items-center justify-center">
+                                        <i class="ri-lock-line text-gray-400"></i>
+                                    </div>
+                                </div>
+                                <input type="password" id="registerPassword" name="password" class="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm" placeholder="Contraseña" required>
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                    <div class="w-5 h-5 flex items-center justify-center password-toggle">
+                                        <i class="ri-eye-off-line text-gray-400" id="toggleRegisterPassword"></i>
+                                    </div>
+                                </div>
+                            </div> 
+
+                            <div class="flex items-start space-x-3">
+                                <input type="checkbox" id="terms" name="terms" class="custom-checkbox mt-1" required>
+                                <label for="terms" class="text-sm text-gray-600 cursor-pointer">
+                                    Acepto los <a href="#" class="text-primary hover:text-primary/80">términos y condiciones</a> y la <a href="#" class="text-primary hover:text-primary/80">política de privacidad</a>
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full bg-gradient-to-r from-primary to-secondary text-white py-3 px-4 rounded-lg font-medium hover:opacity-90 transition-all duration-300 whitespace-nowrap !rounded-button">
+                            Crear Cuenta
+                        </button>
+
+                        <p class="text-center text-sm text-gray-600">
+                            ¿Ya tienes cuenta? 
+                            <button type="button" id="switchToLogin" class="text-primary hover:text-primary/80 font-medium transition-colors">Inicia sesión aquí</button>
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <footer class="w-full py-6 px-4">
+            <div class="max-w-6xl mx-auto text-center">
+                <div class="flex items-center justify-center space-x-6 mb-4">
+                    <div class="w-6 h-6 flex items-center justify-center">
+                        <i class="ri-drop-line text-primary text-xl"></i>
+                    </div>
+                    <div class="w-6 h-6 flex items-center justify-center">
+                        <i class="ri-leaf-line text-secondary text-xl"></i>
+                    </div>
+                    <div class="w-6 h-6 flex items-center justify-center">
+                        <i class="ri-seedling-line text-primary text-xl"></i>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 mb-2">© 2025 SIAR - Sistema de Riego Automático. Todos los derechos reservados.</p>
+                <div class="flex items-center justify-center space-x-4 text-xs text-gray-500">
+                    <a href="#" class="hover:text-primary transition-colors">Política de Privacidad</a>
+                    <span>•</span>
+                    <a href="#" class="hover:text-primary transition-colors">Términos de Servicio</a>
+                    <span>•</span>
+                    <span>Versión 2.1.0</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginTab = document.getElementById('loginTab');
+            const registerTab = document.getElementById('registerTab');
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            const switchToRegister = document.getElementById('switchToRegister');
+            const switchToLogin = document.getElementById('switchToLogin');
+
+            function showLogin() {
+                loginTab.classList.add('tab-active');
+                loginTab.classList.remove('text-gray-600');
+                registerTab.classList.remove('tab-active');
+                registerTab.classList.add('text-gray-600');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            }
+
+            function showRegister() {
+                registerTab.classList.add('tab-active');
+                registerTab.classList.remove('text-gray-600');
+                loginTab.classList.remove('tab-active');
+                loginTab.classList.add('text-gray-600');
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+            }
+
+            loginTab.addEventListener('click', showLogin);
+            registerTab.addEventListener('click', showRegister);
+            switchToRegister.addEventListener('click', showRegister);
+            switchToLogin.addEventListener('click', showLogin);
+        });
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const togglePassword = document.getElementById('togglePassword');
+            const password = document.getElementById('password');
+            const toggleRegisterPassword = document.getElementById('toggleRegisterPassword');
+            const registerPassword = document.getElementById('registerPassword');
+
+            function setupPasswordToggle(toggle, input) {
+                if (toggle) { // Asegurarse de que el elemento exista
+                    toggle.addEventListener('click', function() {
+                        const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                        input.setAttribute('type', type);
+                        
+                        if (type === 'password') {
+                            toggle.innerHTML = '<i class="ri-eye-off-line text-gray-400"></i>';
+                        } else {
+                            toggle.innerHTML = '<i class="ri-eye-line text-gray-400"></i>';
+                        }
+                    });
+                }
+            }
+
+            setupPasswordToggle(togglePassword.parentElement, password);
+            setupPasswordToggle(toggleRegisterPassword.parentElement, registerPassword);
+        });
+    </script>
+
+    </body>
+</html>

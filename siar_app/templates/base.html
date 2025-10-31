@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='image/icono.png') }}">
+    <title>Dashboard - SIAR</title>
+    
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#57B5E7',
+                        secondary: '#4ADE80'
+                    },
+                    borderRadius: {
+                        'button': '8px'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        .status-active { animation: pulse 2s infinite; }
+        .custom-switch { position: relative; width: 3rem; height: 1.5rem; background: #e5e7eb; border-radius: 9999px; cursor: pointer; transition: all 0.3s; }
+        .custom-switch.active { background: #57B5E7; }
+        .custom-switch::before { content: ''; position: absolute; top: 2px; left: 2px; width: 1.25rem; height: 1.25rem; background: white; border-radius: 50%; transition: all 0.3s; }
+        .custom-switch.active::before { transform: translateX(1.5rem); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
+
+    <nav class="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-primary to-secondary rounded-lg">
+                        <i class="ri-plant-line text-xl text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-['Pacifico'] text-xl text-gray-800">SIAR</h1>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            
+                            {% if device_status == 'online' %}
+                                <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
+                                    <i class="ri-wifi-line text-green-600 text-sm"></i>
+                                </div>
+                                <span class="text-sm text-gray-600">En línea</span>
+
+                            {% elif device_status == 'regando' %}
+                                <div class="w-8 h-8 flex items-center justify-center bg-blue-100 rounded-full status-active">
+                                    <i class="ri-drop-line text-blue-600 text-sm"></i>
+                                </div>
+                                <span class="text-sm text-gray-600">Regando...</span>
+
+                            {% else %}
+                                <div class="w-8 h-8 flex items-center justify-center bg-red-100 rounded-full">
+                                    <i class="ri-wifi-off-line text-red-600 text-sm"></i>
+                                </div>
+                                <span class="text-sm text-gray-600">Desconectado</span>
+                            {% endif %}
+                            
+                        </div>
+                    <div class="flex items-center space-x-3">
+                        <button class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-full hover:bg-gray-100">
+                            <i class="ri-notification-3-line"></i>
+                        </button>
+                        <button class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-full hover:bg-gray-100">
+                            <i class="ri-settings-3-line"></i>
+                        </button>
+                        
+                        <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <i class="ri-user-line text-white text-lg"></i>
+                        </div>
+                        <span class="text-sm text-gray-700">{{ user_name }}</span>
+                        </div>
+                        <button id="openLogoutModal" 
+                                data-url="{{ url_for('main.logout') }}" 
+                                class="text-sm text-gray-600 hover:text-gray-800" 
+                                title="Cerrar Sesión">
+                            <div class="w-5 h-5 flex items-center justify-center">
+                                <i class="ri-logout-box-r-line"></i>
+                            </div>
+                        </button>
+                        </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {% block content %}
+        {% endblock %}
+        
+    </main>
+
+    <footer class="bg-gray-900 text-white mt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="lg:col-span-1">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-primary to-secondary rounded-lg">
+                            <i class="ri-plant-line text-xl text-white"></i>
+                        </div>
+                        <h3 class="font-['Pacifico'] text-xl">SIAR</h3>
+                    </div>
+                    <p class="text-gray-300 text-sm leading-relaxed mb-4">
+                        Sistema de Riego Automático Inteligente. Optimiza el consumo de agua y mantén tus cultivos siempre saludables con tecnología avanzada.
+                    </p>
+                    <div class="flex space-x-3">
+                        <a href="#" class="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-primary rounded-full transition-colors">
+                            <i class="ri-facebook-fill text-sm"></i>
+                        </a>
+                        <a href="#" class="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-primary rounded-full transition-colors">
+                            <i class="ri-twitter-fill text-sm"></i>
+                        </a>
+                        <a href="#" class="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-primary rounded-full transition-colors">
+                            <i class="ri-instagram-line text-sm"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-white mb-4">Sistema</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Dashboard</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Control de Zonas</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Programación</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Reportes</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Configuración</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-white mb-4">Soporte</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Centro de Ayuda</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Manual de Usuario</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Contacto Técnico</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Mantenimiento</a></li>
+                        <li><a href="#" class="text-gray-300 hover:text-white text-sm transition-colors">Garantía</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-white mb-4">Contacto</h4>
+                    <div class="space-y-3">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 flex items-center justify-center">
+                                <i class="ri-phone-line text-primary text-sm"></i>
+                            </div>
+                            <span class="text-gray-300 text-sm">+503 7957-1939</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 flex items-center justify-center">
+                                <i class="ri-mail-line text-primary text-sm"></i>
+                            </div>
+                            <span class="text-gray-300 text-sm">soporte@siar.com</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 flex items-center justify-center">
+                                <i class="ri-map-pin-line text-primary text-sm"></i>
+                            </div>
+                            <span class="text-gray-300 text-sm">Santa Ana, El Salvador</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-4 h-4 flex items-center justify-center">
+                                <i class="ri-time-line text-primary text-sm"></i>
+                            </div>
+                            <span class="text-gray-300 text-sm">24/7 Disponible</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-800 mt-8 pt-8">
+                <div class="flex flex-col md:flex-row items-center justify-between">
+                    <div class="flex items-center space-x-6 mb-4 md:mb-0">
+                        <span class="text-gray-400 text-sm">© 2024 SIAR. Todos los derechos reservados.</span>
+                    </div>
+                    <div class="flex items-center space-x-6">
+                        <a href="#" class="text-gray-400 hover:text-white text-sm transition-colors">Política de Privacidad</a>
+                        <a href="#" class="text-gray-400 hover:text-white text-sm transition-colors">Términos de Uso</a>
+                        <a href="#" class="text-gray-400 hover:text-white text-sm transition-colors">Cookies</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    {% block page_scripts %}
+    {% endblock %}
+
+
+    <div id="logoutModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
+        
+        <div class="flex items-start justify-between mb-4">
+            <h3 class="text-xl font-semibold text-gray-900">Confirmar Cierre de Sesión</h3>
+            <button id="closeModalX" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        
+        <p class="text-gray-600 mb-6">¿Está seguro de que desea salir de su cuenta?</p>
+        
+        <div class="flex justify-end space-x-4">
+            <button id="cancelLogout" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
+                Cancelar
+            </button>
+            <button id="confirmLogout" class="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                Cerrar Sesión
+            </button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
