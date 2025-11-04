@@ -111,6 +111,8 @@ class tbl_perfiles_riego(db.Model):
     #    Esto es vital para evitar que el sistema riegue 10 veces en un día
     #    solo porque la tierra se seca rápido.
     frecuencia_minima_horas = db.Column(db.SmallInteger, default=4, nullable=False)
+
+
     
     # Relación con el usuario
     usuario = db.relationship('tbl_usuarios', backref=db.backref('perfiles', lazy=True))

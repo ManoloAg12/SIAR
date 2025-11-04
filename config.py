@@ -23,3 +23,11 @@ class Config:
     # --- CLAVE DE API DEL CLIMA ---
     # Pegue aquí su clave de OpenWeatherMap
     WEATHER_API_KEY = os.environ.get('WEATHER_API_KEY') or 'adb5244d3089558b748a8f08cec298ca'
+
+    # --- CONFIGURACIÓN DE FLASK-MAIL (Usando sus credenciales) ---
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = 'mano.tech111@gmail.com'
+    MAIL_PASSWORD = 'qnyz smqn iblz dcam' # La contraseña de app que ya usó
+    MAIL_DEFAULT_SENDER = 'mano.tech111@gmail.com'

@@ -11,246 +11,210 @@
         </div>
         <div class="flex items-center space-x-3">
             <button class="bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 transition-all whitespace-nowrap !rounded-button">
-                <div class="w-4 h-4 flex items-center justify-center mr-2 inline-flex">
-                    <i class="ri-refresh-line"></i>
-                </div>
-                Actualizar
+                <i class="ri-refresh-line mr-2"></i>Actualizar
             </button>
         </div>
     </div>
 </div>
-
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-<div class="bg-white rounded-xl shadow-lg p-6 card-hover">
-        
+    <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
         {% if device_status == 'regando' %}
         <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Estado del Sistema</p>
-                <p class="text-2xl font-bold text-blue-600 mt-1">Regando</p>
-            </div>
-            <div class="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-full status-active">
-                <i class="ri-drop-line text-blue-600 text-2xl"></i>
-            </div>
+            <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-blue-600 mt-1">Regando</p></div>
+            <div class="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-full status-active"><i class="ri-drop-line text-blue-600 text-2xl"></i></div>
         </div>
-
         {% elif device_status == 'online' %}
         <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Estado del Sistema</p>
-                <p class="text-2xl font-bold text-green-600 mt-1">En Espera</p>
-            </div>
-            <div class="w-12 h-12 flex items-center justify-center bg-green-100 rounded-full">
-                <i class="ri-play-circle-fill text-green-600 text-2xl"></i>
-            </div>
+            <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-green-600 mt-1">En Espera</p></div>
+            <div class="w-12 h-12 flex items-center justify-center bg-green-100 rounded-full"><i class="ri-play-circle-fill text-green-600 text-2xl"></i></div>
         </div>
-
         {% else %}
         <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Estado del Sistema</p>
-                <p class="text-2xl font-bold text-red-600 mt-1">Desconectado</p>
-            </div>
-            <div class="w-12 h-12 flex items-center justify-center bg-red-100 rounded-full">
-                <i class="ri-wifi-off-line text-red-600 text-2xl"></i>
-            </div>
+            <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-red-600 mt-1">Desconectado</p></div>
+            <div class="w-12 h-12 flex items-center justify-center bg-red-100 rounded-full"><i class="ri-wifi-off-line text-red-600 text-2xl"></i></div>
         </div>
         {% endif %}
-
     </div>
     <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
         <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Humedad del Suelo</p>
-                <p class="text-2xl font-bold text-blue-600 mt-1">68%</p> </div>
-            <div class="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-full">
-                <i class="ri-drop-line text-blue-600 text-2xl"></i>
-            </div>
+            <div><p class="text-sm font-medium text-gray-600">Humedad del Suelo</p><p class="text-2xl font-bold text-blue-600 mt-1">--%</p></div>
+            <div class="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-full"><i class="ri-drop-line text-blue-600 text-2xl"></i></div>
         </div>
     </div>
-<div class="bg-white rounded-xl shadow-lg p-6 card-hover">
+    <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
         {% if weather %}
             <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm font-medium text-gray-600">{{ weather.description }}</p>
-                    <p class="text-2xl font-bold text-orange-600 mt-1">{{ weather.temp }}°C</p>
-                </div>
-                <div class="w-12 h-12 flex items-center justify-center bg-orange-100 rounded-full">
-                    <img src="http://openweathermap.org/img/wn/{{ weather.icon }}.png" alt="clima">
-                </div>
+                <div><p class="text-sm font-medium text-gray-600">{{ weather.description }}</p><p class="text-2xl font-bold text-orange-600 mt-1">{{ weather.temp }}°C</p></div>
+                <div class="w-12 h-12 flex items-center justify-center bg-orange-100 rounded-full"><img src="http://openweathermap.org/img/wn/{{ weather.icon }}.png" alt="clima"></div>
             </div>
         {% else %}
             <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm font-medium text-gray-600">Clima</p>
-                    <p class="text-lg font-bold text-gray-500 mt-1">No disponible</p>
-                </div>
-                <div class="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
-                    <i class="ri-question-mark text-gray-500 text-2xl"></i>
-                </div>
+                <div><p class="text-sm font-medium text-gray-600">Clima</p><p class="text-lg font-bold text-gray-500 mt-1">No disponible</p></div>
+                <div class="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full"><i class="ri-question-mark text-gray-500 text-2xl"></i></div>
             </div>
         {% endif %}
     </div>
     <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
         <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Consumo de Agua</p>
-                <p class="text-2xl font-bold text-indigo-600 mt-1">245L</p>
-            </div>
-            <div class="w-12 h-12 flex items-center justify-center bg-indigo-100 rounded-full">
-                <i class="ri-water-percent-line text-indigo-600 text-2xl"></i>
-            </div>
+            <div><p class="text-sm font-medium text-gray-600">Consumo de Agua</p><p class="text-2xl font-bold text-indigo-600 mt-1">245L</p></div>
+            <div class="w-12 h-12 flex items-center justify-center bg-indigo-100 rounded-full"><i class="ri-water-percent-line text-indigo-600 text-2xl"></i></div>
         </div>
     </div>
 </div>
-
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-    <div class="lg:col-span-2 bg-white rounded-xl shadow-lg p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-semibold text-gray-900">Consumo de Agua Semanal</h3>
-        </div>
-        <div id="waterChart" class="h-80"></div>
-    </div>
-
-    <div class="bg-white rounded-xl shadow-lg p-6">
-        <h3 class="text-xl font-semibold text-gray-900 mb-6">Control de Zonas</h3>
-        <div class="space-y-4">
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 flex items-center justify-center bg-green-100 rounded-lg">
-                        <i class="ri-plant-line text-green-600"></i>
-                    </div>
-                    <div>
-                        <p class="font-medium text-gray-900">Zona 1 - Jardín</p>
-                        <p class="text-sm text-gray-600">Activo</p>
-                    </div>
-                </div>
-                <div class="custom-switch active" data-zone="1"></div>
-            </div>
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 flex items-center justify-center bg-blue-100 rounded-lg">
-                        <i class="ri-seedling-line text-blue-600"></i>
-                    </div>
-                    <div>
-                        <p class="font-medium text-gray-900">Zona 2 - Huerto</p>
-                        <p class="text-sm text-gray-600">Desactivado</p>
-                    </div>
-                </div>
-                <div class="custom-switch" data-zone="2"></div>
-            </div>
-        </div>
-    </div>
+    <div class="lg:col-span-2 bg-white rounded-xl shadow-lg p-6"><div class="flex items-center justify-between mb-6"><h3 class="text-xl font-semibold text-gray-900">Consumo de Agua Semanal</h3></div><div id="waterChart" class="h-80"></div></div>
+    <div class="bg-white rounded-xl shadow-lg p-6"><h3 class="text-xl font-semibold text-gray-900 mb-6">Control de Zonas</h3></div>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    
     <div class="bg-white rounded-xl shadow-lg p-6">
         <h3 class="text-xl font-semibold text-gray-900 mb-6">Programación Automática</h3>
-        <div class="space-y-4">
-            <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-full">
-                        <i class="ri-sun-line text-orange-600"></i>
+        
+        {% if configuracion_actual %}
+            <div class="space-y-4">
+                <div class="flex items-center justify-between p-4 border border-green-200 bg-green-50 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
+                            <i class="ri-plant-line text-green-600"></i>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-900">Riego Inteligente (por Sensor)</p>
+                            <p class="text-sm text-gray-600">
+                                Regar por {{ configuracion_actual.duracion_riego_segundos }}s 
+                                cuando la humedad baje de {{ configuracion_actual.umbral_humedad_minima }}%
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <p class="font-medium text-gray-900">Riego Matutino</p>
-                        <p class="text-sm text-gray-600">06:00 - 06:30 • Diario</p>
-                    </div>
+                    <div class="custom-switch {% if configuracion_actual.modo_automatico %}active{% endif %}" data-config="modo_automatico"></div>
                 </div>
-                <div class="custom-switch active"></div>
-            </div>
-            <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 flex items-center justify-center bg-indigo-100 rounded-full">
-                        <i class="ri-moon-line text-indigo-600"></i>
+                
+                {% if horarios_actuales %}
+                    {% for horario in horarios_actuales %}
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-full">
+                                <i class="ri-time-line text-orange-600"></i>
+                            </div>
+                            <div>
+                                <p class="font-medium text-gray-900">Riego Programado</p>
+                                <p class="text-sm text-gray-600">
+                                    A las {{ horario.hora_riego.strftime('%H:%M') }} h 
+                                    (Días: {{ horario.dias_semana }})
+                                </p>
+                            </div>
+                        </div>
+                        <div class="custom-switch {% if horario.activo %}active{% endif %}" data-horario-id="{{ horario.id }}"></div>
                     </div>
-                    <div>
-                        <p class="font-medium text-gray-900">Riego Vespertino</p>
-                        <p class="text-sm text-gray-600">18:00 - 18:45 • L, M, V</p>
-                    </div>
-                </div>
-                <div class="custom-switch active"></div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-sm text-gray-500 text-center">No hay horarios de riego programados.</p>
+                {% endif %}
+
             </div>
-        </div>
+        {% else %}
+            <p class="text-sm text-gray-500 text-center">Aún no se ha configurado un dispositivo.</p>
+        {% endif %}
     </div>
 
     <div class="bg-white rounded-xl shadow-lg p-6">
         <h3 class="text-xl font-semibold text-gray-900 mb-6">Actividad Reciente</h3>
-        <div class="space-y-4">
-            <div class="flex items-start space-x-3">
-                <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full mt-1">
-                    <i class="ri-check-line text-green-600"></i>
-                </div>
-                <div class="flex-1">
-                    <p class="text-sm font-medium text-gray-900">Riego completado en Zona 1</p>
-                    <p class="text-xs text-gray-600">Consumo: 45L • Duración: 30 min</p>
-                </div>
-            </div>
-            <div class="flex items-start space-x-3">
-                <div class="w-8 h-8 flex items-center justify-center bg-blue-100 rounded-full mt-1">
-                    <i class="ri-water-percent-line text-blue-600"></i>
-                </div>
-                <div class="flex-1">
-                    <p class="text-sm font-medium text-gray-900">Nivel de humedad actualizado</p>
-                    <p class="text-xs text-gray-600">Humedad: 68%</p>
-                </div>
-            </div>
         </div>
-    </div>
 </div>
 
 <div class="grid grid-cols-1 gap-8 mt-8">
     <div class="bg-white rounded-xl shadow-lg p-6">
         <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-semibold text-gray-900">Perfiles de Riego</h3>
-            <button class="text-primary hover:text-primary/80 text-sm font-medium">
+            <button id="openProfileModal" class="text-primary hover:text-primary/80 text-sm font-medium">
                 + Nuevo Perfil
             </button>
         </div>
+        
         <div class="space-y-4">
-            
             {% if perfiles %}
                 {% for perfil in perfiles %}
-                <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-lg">
-                            <i class="ri-price-tag-3-line text-gray-600"></i>
+                {% if perfil.usuario_id == current_user_id %}
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-lg"><i class="ri-price-tag-3-line text-gray-600"></i></div>
+                            <div>
+                                <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }} <span class="text-xs text-green-600">(Mi Perfil)</span></p>
+                                <p class="text-sm text-gray-600">{{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)</p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }}</p>
-                            <p class="text-sm text-gray-600">
-                                {{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)
-                            </p>
-                        </div>
+                        <button class="apply-profile-btn bg-secondary text-white px-4 py-2 rounded-lg hover:opacity-90 !rounded-button" data-id="{{ perfil.id }}">Aplicar</button>
                     </div>
-                    <button 
-                        class="apply-profile-btn bg-secondary text-white px-4 py-2 rounded-lg hover:opacity-90 transition-all !rounded-button"
-                        data-id="{{ perfil.id }}">
-                        Aplicar
-                    </button>
-                </div>
+                {% else %}
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg"><i class="ri-group-line text-gray-600"></i></div>
+                            <div>
+                                <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }}</p>
+                                <p class="text-sm text-gray-600">{{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)</p>
+                            </div>
+                        </div>
+                        <button class="apply-profile-btn bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 !rounded-button" data-id="{{ perfil.id }}">Aplicar</button>
+                    </div>
+                {% endif %}
                 {% endfor %}
             {% else %}
-                <p class="text-gray-500 text-center">No ha creado ningún perfil de riego todavía.</p>
+                <p class="text-gray-500 text-center">No hay perfiles de riego creados. ¡Crea el primero!</p>
             {% endif %}
-            
         </div>
     </div>
 </div>
 
+<div id="newProfileModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
+        <div class="flex items-start justify-between mb-4">
+            <h3 class="text-xl font-semibold text-gray-900">Crear Nuevo Perfil de Riego</h3>
+            <button id="closeProfileModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        
+        <form id="profileForm" class="space-y-4">
+            <div>
+                <label for="perfil_nombre" class="block text-sm font-medium text-gray-700">Nombre del Perfil</label>
+                <input type="text" id="perfil_nombre" name="nombre_perfil" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+            </div>
+            <div>
+                <label for="perfil_descripcion" class="block text-sm font-medium text-gray-700">Descripción Breve</label>
+                <textarea id="perfil_descripcion" name="descripcion" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label for="perfil_umbral" class="block text-sm font-medium text-gray-700">Umbral Humedad (%)</label>
+                    <input type="number" id="perfil_umbral" name="umbral_humedad" placeholder="Ej: 30" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                </div>
+                <div>
+                    <label for="perfil_duracion" class="block text-sm font-medium text-gray-700">Duración Riego (seg)</label>
+                    <input type="number" id="perfil_duracion" name="duracion_riego_seg" placeholder="Ej: 20" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                </div>
+                <div>
+                    <label for="perfil_frecuencia" class="block text-sm font-medium text-gray-700">Frecuencia Mín. (h)</label>
+                    <input type="number" id="perfil_frecuencia" name="frecuencia_minima_horas" value="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-4 pt-4">
+                <button type="button" id="cancelProfileModal" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">Cancelar</button>
+                <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">Guardar Perfil</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 
 {% block page_scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Inicializadores que ya teníamos
+        // Llamamos a todas las funciones que 'home.html' necesita.
         initializeWaterChart();
         initializeSwitches();
         initializeTimeUpdate();
-
-        // ¡NUEVO! Inicializador para los botones de "Aplicar Perfil"
-        initializeProfileApplier(); 
+        initializeProfileApplier();
+        initializeProfileModal(); 
+        initializeLogoutModal(); // Esta llamada ya está en base.html
     });
 </script>
 {% endblock %}

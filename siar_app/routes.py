@@ -1,4 +1,5 @@
 import requests
+from sqlalchemy import desc
 from config import Config
 from flask import (
     Blueprint, render_template, request, jsonify, g, 
@@ -9,12 +10,32 @@ from flask import (
 from . import db
 from .models import (
     tbl_usuarios, tbl_paises, tbl_configuracion, 
-    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego
+    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego,tbl_horarios
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text 
+from flask_mail import Message # <-- AÑADIR IMPORTACIÓN
+from . import db, mail # <-- AÑADIR 'mail
+from sqlalchemy import text, not_
 
 bp = Blueprint('main', __name__)
+
+
+# --- FUNCIÓN HELPER PARA ENVIAR CORREO ---
+def send_welcome_email(user_email, user_name):
+    """Envía el correo de bienvenida en segundo plano."""
+    try:
+        msg = Message(
+            subject="¡Bienvenido a SIAR!",
+            recipients=[user_email],
+            html=render_template('email/welcome_email.html', user_name=user_name)
+        )
+        mail.send(msg)
+        print(f"Correo de bienvenida enviado a {user_email}")
+    except Exception as e:
+        print(f"Error al enviar correo de bienvenida: {e}")
+        # No detenemos el registro si el correo falla, solo lo reportamos.
+        pass
 
 # --- Rutas Web (Para el navegador) ---
 @bp.route('/')
@@ -22,7 +43,6 @@ bp = Blueprint('main', __name__)
 def login():
     """Muestra la página de login, maneja el registro y el inicio de sesión."""
     
-    # Si el usuario ya está logueado, redirigirlo al home
     if 'user_id' in session:
         return redirect(url_for('main.home'))
 
@@ -30,28 +50,39 @@ def login():
         form_type = request.form.get('form_type')
         
         if form_type == 'register':
-            # --- LÓGICA DE REGISTRO ---
             try:
+                # 1. Recoger datos
+                nombre_completo = request.form.get('nombre_completo')
+                email = request.form.get('email')
+                nombre_usuario = request.form.get('nombre_usuario')
+                password = request.form.get('password')
+                
                 pais = tbl_paises.query.filter_by(codigo_iso=request.form.get('pais')).first()
                 if not pais:
                     flash(f'Error: País no encontrado.', 'danger')
                     return redirect(url_for('main.login'))
 
+                # 2. Crear objeto de usuario
                 nuevo_usuario = tbl_usuarios(
-                    nombre_completo=request.form.get('nombre_completo'),
-                    email=request.form.get('email'),
-                    nombre_usuario=request.form.get('nombre_usuario'),
+                    nombre_completo=nombre_completo,
+                    email=email,
+                    nombre_usuario=nombre_usuario,
                     telefono=request.form.get('telefono'),
                     direccion=request.form.get('direccion'),
                     ciudad=request.form.get('ciudad'),
                     pais_id=pais.id 
                 )
-                nuevo_usuario.set_password(request.form.get('password'))
+                nuevo_usuario.set_password(password)
                 
+                # 3. Guardar en BBDD
                 db.session.add(nuevo_usuario)
                 db.session.commit()
                 
-                flash('¡Cuenta creada exitosamente! Ya puede iniciar sesión.', 'success')
+                # --- ¡NUEVO! ENVIAR CORREO DE BIENVENIDA ---
+                send_welcome_email(nuevo_usuario.email, nuevo_usuario.nombre_completo)
+                # -------------------------------------------
+                
+                flash('¡Cuenta creada exitosamente! Se ha enviado un correo de bienvenida.', 'success')
             
             except IntegrityError:
                 db.session.rollback() 
@@ -73,7 +104,7 @@ def login():
                 if usuario and usuario.check_password(password):
                     session.clear()
                     session['user_id'] = usuario.id
-                    session['user_name'] = usuario.nombre_completo # <-- Aquí guardamos el nombre
+                    session['user_name'] = usuario.nombre_completo 
                     
                     return redirect(url_for('main.home'))
                 else:
@@ -93,7 +124,50 @@ def logout():
     flash('Ha cerrado sesión exitosamente.', 'success')
     return redirect(url_for('main.login'))
 
+#Api para crear perfiles de riego 
+@bp.route('/api/crear_perfil', methods=['POST'])
+def crear_perfil():
+    """
+    API Endpoint para crear un nuevo perfil de riego.
+    Recibe datos de un formulario.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
+    try:
+        # Usamos request.form porque enviaremos datos de formulario, no JSON
+        data = request.form
+        
+        # Validamos que los datos numéricos no estén vacíos
+        umbral = data.get('umbral_humedad')
+        duracion = data.get('duracion_riego_seg')
+        frecuencia = data.get('frecuencia_minima_horas')
 
+        if not (umbral and duracion and frecuencia):
+            flash('Todos los campos numéricos son obligatorios.', 'danger')
+            return jsonify({"status": "error", "message": "Campos numéricos obligatorios"}), 400
+
+        # Creamos el nuevo objeto de perfil
+        nuevo_perfil = tbl_perfiles_riego(
+            usuario_id=session['user_id'],
+            nombre_perfil=data.get('nombre_perfil'),
+            descripcion=data.get('descripcion'),
+            umbral_humedad=int(umbral),
+            duracion_riego_seg=int(duracion),
+            frecuencia_minima_horas=int(frecuencia)
+        )
+        
+        db.session.add(nuevo_perfil)
+        db.session.commit()
+        
+        flash('¡Perfil creado exitosamente!', 'success')
+        return jsonify({"status": "ok", "message": "Perfil creado"})
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error al crear perfil: {e}")
+        flash(f'Error al crear perfil: {e}', 'danger')
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # api para el clima
 def get_weather(city, country_code):
@@ -137,40 +211,43 @@ def get_weather(city, country_code):
         return None
 
 
+
 @bp.route('/home')
 def home():
-    """Muestra el dashboard principal (home.html)."""
-    
     if 'user_id' not in session:
         flash('Debe iniciar sesión para ver esta página.', 'info')
         return redirect(url_for('main.login'))
     
+    current_user_id = session['user_id']
     user_name = session.get('user_name', 'Usuario')
     device_status = 'Desconocido'
     perfiles_list = []
-    weather_data = None # Variable para el clima
+    weather_data = None
+    configuracion_actual = None # <-- ¡NUEVO!
+    horarios_actuales = []     # <-- ¡NUEVO!
     
     try:
-        # Buscamos al usuario y su dispositivo
-        usuario = tbl_usuarios.query.get(session['user_id'])
+        usuario = tbl_usuarios.query.get(current_user_id)
         if not usuario:
             flash("Error de sesión, inicie de nuevo.", 'danger')
             return redirect(url_for('main.login'))
 
-        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        # Buscamos el dispositivo del usuario
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).first()
         
         if dispositivo:
             device_status = dispositivo.estado_actual
+            # --- ¡NUEVO! OBTENER CONFIG Y HORARIOS ---
+            configuracion_actual = dispositivo.configuracion
+            horarios_actuales = tbl_horarios.query.filter_by(dispositivo_id=dispositivo.id).order_by(tbl_horarios.hora_riego).all()
+            # ----------------------------------------
         else:
             device_status = 'No Asignado'
 
-        perfiles_list = tbl_perfiles_riego.query.filter_by(usuario_id=session['user_id']).order_by(tbl_perfiles_riego.nombre_perfil).all()
+        perfiles_list = tbl_perfiles_riego.query.order_by(tbl_perfiles_riego.nombre_perfil).all()
         
-        # --- ¡NUEVO! OBTENER DATOS DEL CLIMA ---
         if usuario.ciudad and usuario.pais:
-            # Usamos la ciudad y el código de país (ej: 'SV') del usuario
             weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
-        # ------------------------------------
             
     except Exception as e:
         print(f"Error al buscar datos del dashboard: {e}")
@@ -189,9 +266,39 @@ def home():
         user_name=user_name,
         device_status=device_status,
         perfiles=perfiles_list,
-        weather=weather_data  # <--- ¡NUEVA VARIABLE AÑADIDA!
+        current_user_id=current_user_id,
+        weather=weather_data,
+        configuracion_actual=configuracion_actual, # <-- Pasar config
+        horarios_actuales=horarios_actuales     # <-- Pasar horarios
     )
 
+#api para aplicar perfil 
+@bp.route('/api/aplicar_perfil', methods=['POST'])
+def aplicar_perfil():
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    try:
+        data = request.json
+        perfil_id = data.get('perfil_id')
+        
+        # Lógica de validación simplificada: solo chequear que exista
+        perfil = tbl_perfiles_riego.query.get(perfil_id)
+        if not perfil:
+            return jsonify({"status": "error", "message": "Perfil no encontrado"}), 404
+        
+        dispositivo_usuario = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        if not dispositivo_usuario or not dispositivo_usuario.configuracion:
+             return jsonify({"status": "error", "message": "Dispositivo o config no encontrado"}), 404
+
+        config_activa = dispositivo_usuario.configuracion
+        config_activa.umbral_humedad_minima = perfil.umbral_humedad
+        config_activa.duracion_riego_segundos = perfil.duracion_riego_seg
+        
+        db.session.commit()
+        return jsonify({"status": "ok", "message": f"Perfil '{perfil.nombre_perfil}' aplicado."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 # --- API (Para el ESP32) ---
 # (Sin cambios)
 

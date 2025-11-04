@@ -1,6 +1,6 @@
 /*
-  Este archivo (main.js) define las funciones 
-  que se usarán en el dashboard (home.html).
+  Este archivo (main.js) define TODAS las funciones 
+  que usará la aplicación.
 */
 
 // Gráfico de consumo de agua
@@ -10,7 +10,7 @@ function initializeWaterChart() {
     
     const chart = echarts.init(chartContainer);
     const option = {
-        // (Toda la configuración de su gráfico ECharts)
+        // (Configuración de ECharts)
         animation: false,
         grid: { top: 20, right: 20, bottom: 40, left: 50, containLabel: false },
         xAxis: {
@@ -63,9 +63,6 @@ function initializeSwitches() {
             if (zone) {
                 const isActive = this.classList.contains('active');
                 console.log(`Zona ${zone} ${isActive ? 'activada' : 'desactivada'}`);
-                
-                // FUTURO: Aquí enviaremos un 'fetch' a la API de Flask
-                // para actualizar el estado del relé.
             }
         });
     });
@@ -73,15 +70,10 @@ function initializeSwitches() {
 
 // Actualización del tiempo
 function initializeTimeUpdate() {
-    function updateLastUpdateTime() {
-        const lastUpdateElement = document.getElementById('lastUpdate');
-        if (lastUpdateElement) {
-            lastUpdateElement.textContent = 'Actualizado ahora'; 
-        }
+    const lastUpdateElement = document.getElementById('lastUpdate');
+    if (lastUpdateElement) {
+        lastUpdateElement.textContent = 'Actualizado ahora'; 
     }
-    // (Se puede añadir un setInterval si se desea)
-    updateLastUpdateTime(); 
-    // setInterval(updateLastUpdateTime, 60000); // <-- Si quiere refresco automático
 }
 
 /* ============================================= */
@@ -95,55 +87,109 @@ function initializeLogoutModal() {
     const confirmButton = document.getElementById('confirmLogout');
     const closeXButton = document.getElementById('closeModalX');
 
-    // Si no encontramos los botones (ej. en la pág de login), no hacemos nada.
     if (!openButton || !modal || !cancelButton || !confirmButton || !closeXButton) {
         return;
     }
 
-    // Obtenemos la URL del botón que modificamos en base.html
     const logoutUrl = openButton.getAttribute('data-url');
+    const openModal = () => modal.classList.remove('hidden');
+    const closeModal = () => modal.classList.add('hidden');
 
-    const openModal = () => {
-        modal.classList.remove('hidden');
-    };
-
-    const closeModal = () => {
-        modal.classList.add('hidden');
-    };
-
-    // 1. Abrir el modal
     openButton.addEventListener('click', (e) => {
-        e.preventDefault(); // Prevenir cualquier comportamiento por defecto
+        e.preventDefault(); 
         openModal();
     });
 
-    // 2. Cerrar con el botón "Cancelar"
     cancelButton.addEventListener('click', closeModal);
-
-    // 3. Cerrar con la "X"
     closeXButton.addEventListener('click', closeModal);
-
-    // 4. (Opcional) Cerrar si se hace clic en el fondo oscuro
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            closeModal();
-        }
+        if (e.target === modal) closeModal();
     });
-
-    // 5. Confirmar y redirigir
     confirmButton.addEventListener('click', () => {
-        // Redirigimos a la URL de logout
         window.location.href = logoutUrl;
     });
 }
 
-/* Este 'listener' global se asegura de que la lógica del modal 
-  se active en todas las páginas que usen el layout (base.html).
-*/
-document.addEventListener('DOMContentLoaded', function() {
-    initializeLogoutModal();
+/* ============================================= */
+/* === LÓGICA PARA APLICAR PERFILES DE RIEGO === */
+/* (ESTA ES LA FUNCIÓN QUE FALTABA)             */
+/* ============================================= */
+
+function initializeProfileApplier() {
+    const applyButtons = document.querySelectorAll('.apply-profile-btn');
     
-    /* NOTA: Las funciones específicas de la página (como 'initializeWaterChart')
-       deben seguir llamándose desde el bloque <script> en 'home.html'
-       para que solo se ejecuten en esa página. */
-});
+    applyButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const perfilId = this.dataset.id;
+            
+            if (!confirm('¿Está seguro de que desea aplicar este perfil de riego? Se sobrescribirá la configuración actual.')) {
+                return;
+            }
+
+            fetch('/api/aplicar_perfil', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ perfil_id: perfilId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('¡Perfil aplicado con éxito!');
+                } else {
+                    alert('Error al aplicar el perfil: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error en fetch:', error);
+                alert('Error de conexión al aplicar el perfil.');
+            });
+        });
+    });
+}
+
+/* ============================================= */
+/* === LÓGICA PARA EL MODAL DE CREAR PERFIL ==== */
+/* (ESTA TAMBIÉN FALTABA)                        */
+/* ============================================= */
+
+function initializeProfileModal() {
+    const openButton = document.getElementById('openProfileModal');
+    const modal = document.getElementById('newProfileModal');
+    const cancelButton = document.getElementById('cancelProfileModal');
+    const closeXButton = document.getElementById('closeProfileModal');
+    const form = document.getElementById('profileForm');
+
+    if (!openButton || !modal || !cancelButton || !form || !closeXButton) {
+        return;
+    }
+
+    const openModal = () => modal.classList.remove('hidden');
+    const closeModal = () => modal.classList.add('hidden');
+
+    openButton.addEventListener('click', openModal);
+    cancelButton.addEventListener('click', closeModal);
+    closeXButton.addEventListener('click', closeModal);
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault(); 
+        const formData = new FormData(form);
+
+        fetch('/api/crear_perfil', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('¡Perfil creado con éxito!');
+                window.location.reload(); // Recarga la página para ver el nuevo perfil
+            } else {
+                alert('Error al crear el perfil: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error en fetch:', error);
+            alert('Error de conexión al crear el perfil.');
+        });
+    });
+}

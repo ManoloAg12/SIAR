@@ -3,3 +3,4 @@ psycopg2-binary
 flask_sqlalchemy  # <--- Añadir esta línea
 werkzeug          # <--- Añadir esta (para el hash de contraseñas)
 requests
+flask-mail

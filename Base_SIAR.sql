@@ -38,3 +38,5 @@ INSERT INTO tbl_paises (nombre, codigo_iso) VALUES
 ('Estados Unidos', 'US'),
 ('España', 'ES'),
 ('Panamá', 'PA');
+
+ALTER TABLE tbl_usuarios ALTER COLUMN password_hash TYPE VARCHAR(256);

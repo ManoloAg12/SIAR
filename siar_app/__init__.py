@@ -2,9 +2,11 @@ import os
 from flask import Flask
 from config import Config
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail
 
 # 1. Creamos la instancia de SQLAlchemy globalmente
 db = SQLAlchemy()
+mail = Mail()
 
 def create_app(config_class=Config):
     """
@@ -17,6 +19,7 @@ def create_app(config_class=Config):
 
     # 2. Inicializar la base de datos con nuestra aplicación
     db.init_app(app)
+    mail.init_app(app)
 
     # 3. Registrar las rutas (Blueprints)
     with app.app_context():
