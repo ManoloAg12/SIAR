@@ -59,15 +59,11 @@ class tbl_configuracion(db.Model):
     dispositivo_id = db.Column(db.Integer, db.ForeignKey('tbl_dispositivos.id'), unique=True, nullable=False)
     umbral_humedad_minima = db.Column(db.SmallInteger, nullable=False, default=40)
     duracion_riego_segundos = db.Column(db.SmallInteger, nullable=False, default=15)
+    frecuencia_minima_horas = db.Column(db.SmallInteger, nullable=False, default=4)
     modo_automatico = db.Column(db.Boolean, nullable=False, default=True)
+    perfil_activo_id = db.Column(db.Integer, db.ForeignKey('tbl_perfiles_riego.id'), nullable=True)
+    perfil_activo = db.relationship('tbl_perfiles_riego', lazy='joined')
 
-class tbl_horarios(db.Model):
-    __tablename__ = 'tbl_horarios'
-    id = db.Column(db.Integer, primary_key=True)
-    dispositivo_id = db.Column(db.Integer, db.ForeignKey('tbl_dispositivos.id'), nullable=False)
-    hora_riego = db.Column(db.Time, nullable=False)
-    dias_semana = db.Column(db.String(15), nullable=False) # Guardaremos "1,3,5" (L,M,V)
-    activo = db.Column(db.Boolean, nullable=False, default=True)
 
 class tbl_lecturas_humedad(db.Model):
     __tablename__ = 'tbl_lecturas_humedad'

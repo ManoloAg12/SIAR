@@ -1,4 +1,5 @@
 import requests
+import secrets
 from sqlalchemy import desc
 from config import Config
 from flask import (
@@ -10,7 +11,7 @@ from flask import (
 from . import db
 from .models import (
     tbl_usuarios, tbl_paises, tbl_configuracion, 
-    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego,tbl_horarios
+    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text 
@@ -223,8 +224,8 @@ def home():
     device_status = 'Desconocido'
     perfiles_list = []
     weather_data = None
-    configuracion_actual = None # <-- ¡NUEVO!
-    horarios_actuales = []     # <-- ¡NUEVO!
+    configuracion_actual = None 
+    dispositivos_list = []
     
     try:
         usuario = tbl_usuarios.query.get(current_user_id)
@@ -232,18 +233,18 @@ def home():
             flash("Error de sesión, inicie de nuevo.", 'danger')
             return redirect(url_for('main.login'))
 
-        # Buscamos el dispositivo del usuario
         dispositivo = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).first()
         
         if dispositivo:
             device_status = dispositivo.estado_actual
-            # --- ¡NUEVO! OBTENER CONFIG Y HORARIOS ---
+            # --- ¡LÓGICA SIMPLIFICADA! ---
             configuracion_actual = dispositivo.configuracion
-            horarios_actuales = tbl_horarios.query.filter_by(dispositivo_id=dispositivo.id).order_by(tbl_horarios.hora_riego).all()
-            # ----------------------------------------
+            # ¡Ya no buscamos horarios_actuales!
+            # -----------------------------
         else:
             device_status = 'No Asignado'
 
+        dispositivos_list = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).order_by(tbl_dispositivos.nombre_dispositivo).all()
         perfiles_list = tbl_perfiles_riego.query.order_by(tbl_perfiles_riego.nombre_perfil).all()
         
         if usuario.ciudad and usuario.pais:
@@ -252,7 +253,6 @@ def home():
     except Exception as e:
         print(f"Error al buscar datos del dashboard: {e}")
 
-    # Prueba de conexión a la BBDD
     db_status = "Desconectado"
     try:
         db.session.execute(text('SELECT 1'))
@@ -268,11 +268,56 @@ def home():
         perfiles=perfiles_list,
         current_user_id=current_user_id,
         weather=weather_data,
-        configuracion_actual=configuracion_actual, # <-- Pasar config
-        horarios_actuales=horarios_actuales     # <-- Pasar horarios
+        configuracion_actual=configuracion_actual, # <-- Solo pasamos la config
+        dispositivos=dispositivos_list
+        # ¡horarios_actuales ELIMINADO!
     )
 
+# crear dispositivo 
+# ===== CAMBIO 1: API /crear_dispositivo (MODIFICADA) =====
+@bp.route('/api/crear_dispositivo', methods=['POST'])
+def crear_dispositivo():
+    """
+    Crea un nuevo dispositivo.
+    Genera una API Key única.
+    YA NO CREA UNA CONFIGURACIÓN POR DEFECTO.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
+    try:
+        data = request.form
+        nombre_dispositivo = data.get('nombre_dispositivo')
+        
+        if not nombre_dispositivo:
+            return jsonify({"status": "error", "message": "El nombre es obligatorio"}), 400
+
+        # 1. Generar la clave única (64 caracteres hexadecimales)
+        api_key = secrets.token_hex(32)
+
+        # 2. Crear el dispositivo
+        nuevo_dispositivo = tbl_dispositivos(
+            usuario_id=session['user_id'],
+            nombre_dispositivo=nombre_dispositivo,
+            device_api_key=api_key,
+            estado_actual='offline'
+        )
+        db.session.add(nuevo_dispositivo)
+        db.session.commit()
+
+        # 3. YA NO SE CREA LA CONFIGURACIÓN POR DEFECTO (ELIMINADO)
+        
+        flash(f'¡Dispositivo "{nombre_dispositivo}" creado con éxito!', 'success')
+        return jsonify({"status": "ok", "message": "Dispositivo creado"})
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error al crear dispositivo: {e}")
+        flash(f'Error al crear dispositivo: {e}', 'danger')
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 #api para aplicar perfil 
+# ===== CAMBIO 2: API /aplicar_perfil (MODIFICADA) =====
 @bp.route('/api/aplicar_perfil', methods=['POST'])
 def aplicar_perfil():
     if 'user_id' not in session:
@@ -281,21 +326,116 @@ def aplicar_perfil():
         data = request.json
         perfil_id = data.get('perfil_id')
         
-        # Lógica de validación simplificada: solo chequear que exista
         perfil = tbl_perfiles_riego.query.get(perfil_id)
         if not perfil:
             return jsonify({"status": "error", "message": "Perfil no encontrado"}), 404
         
         dispositivo_usuario = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
-        if not dispositivo_usuario or not dispositivo_usuario.configuracion:
-             return jsonify({"status": "error", "message": "Dispositivo o config no encontrado"}), 404
+        if not dispositivo_usuario:
+             return jsonify({"status": "error", "message": "Dispositivo no encontrado"}), 404
+
+        # Validar que el dispositivo esté online
+        if dispositivo_usuario.estado_actual != 'online':
+            return jsonify({"status": "error", "message": f"Error: El dispositivo está '{dispositivo_usuario.estado_actual}'."}), 400
 
         config_activa = dispositivo_usuario.configuracion
-        config_activa.umbral_humedad_minima = perfil.umbral_humedad
-        config_activa.duracion_riego_segundos = perfil.duracion_riego_seg
+
+        if config_activa:
+            print("Configuración existente encontrada. Actualizando...")
+            config_activa.umbral_humedad_minima = perfil.umbral_humedad
+            config_activa.duracion_riego_segundos = perfil.duracion_riego_seg
+            # --- ¡AÑADIR ESTE CAMPO! ---
+            config_activa.frecuencia_minima_horas = perfil.frecuencia_minima_horas
+            config_activa.perfil_activo_id = perfil.id
+        else:
+            print("Configuración no encontrada. Creando una nueva...")
+            config_activa = tbl_configuracion(
+                dispositivo_id=dispositivo_usuario.id,
+                umbral_humedad_minima=perfil.umbral_humedad,
+                duracion_riego_segundos=perfil.duracion_riego_seg,
+                # --- ¡AÑADIR ESTE CAMPO! ---
+                frecuencia_minima_horas = perfil.frecuencia_minima_horas,
+                modo_automatico=True,
+                perfil_activo_id = perfil.id     
+            )
+            db.session.add(config_activa)
         
         db.session.commit()
         return jsonify({"status": "ok", "message": f"Perfil '{perfil.nombre_perfil}' aplicado."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ========================================================
+    
+#dinamismo para las cartas
+@bp.route('/api/get_dynamic_status')
+def get_dynamic_status():
+    """
+    Devuelve el estado actualizado del dispositivo y la BBDD como JSON.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+        
+    device_status_val = 'Desconocido'
+    db_status_val = "Desconectado"
+    
+    try:
+        # 1. Revisar estado del dispositivo
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        if dispositivo:
+            device_status_val = dispositivo.estado_actual
+        else:
+            device_status_val = 'No Asignado'
+            
+    except Exception as e:
+        print(f"Error al buscar dispositivo: {e}")
+        device_status_val = 'Error'
+
+    try:
+        # 2. Revisar estado de la BBDD
+        db.session.execute(text('SELECT 1'))
+        db_status_val = "Conectado (SQLAlchemy)"
+    except Exception as e:
+        db_status_val = f"Error: {e}"
+
+    # 3. Devolver ambos valores como JSON
+    return jsonify({
+        "device_status": device_status_val,
+        "db_status": db_status_val
+    })
+
+
+
+#dinamismo para el togle de activar el modo automatico
+@bp.route('/api/toggle_modo_automatico', methods=['POST'])
+def toggle_modo_automatico():
+    """
+    Activa o desactiva el modo de riego automático para el dispositivo del usuario.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
+    try:
+        data = request.json
+        new_state = data.get('new_state') # Recibirá true o false
+        
+        if new_state is None:
+            return jsonify({"status": "error", "message": "Falta el 'new_state'"}), 400
+
+        # Asumimos un dispositivo por usuario por ahora
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        
+        if not dispositivo or not dispositivo.configuracion:
+            return jsonify({"status": "error", "message": "Configuración no encontrada"}), 404
+
+        # Actualizar el estado en la base de datos
+        config_activa = dispositivo.configuracion
+        config_activa.modo_automatico = new_state
+        
+        db.session.commit()
+        
+        return jsonify({"status": "ok", "message": "Modo automático actualizado."})
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
