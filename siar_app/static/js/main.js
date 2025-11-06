@@ -289,3 +289,141 @@ function initializeDeviceModal() {
         .catch(error => console.error('Error en fetch:', error));
     });
 }
+
+/* ================================================ */
+/* === LÓGICA PARA ACTUALIZAR HUMEDAD DINÁMICA === */
+/* ================================================ */
+
+function initializeHumidityUpdater() {
+    const humidityElement = document.getElementById('humidityValue');
+    
+    // Salir si no estamos en la página del home (donde existe el id)
+    if (!humidityElement) return; 
+
+    // Función asíncrona para buscar los datos
+    async function fetchHumidity() {
+        try {
+            // 1. Consultamos nuestro nuevo endpoint
+            const response = await fetch('/api/ultima_humedad');
+            
+            if (!response.ok) {
+                throw new Error('Error de red al consultar la humedad');
+            }
+            
+            const data = await response.json();
+            
+            // 2. Actualizamos el texto del elemento
+            let valor = data.humedad;
+            if (typeof valor === 'number') {
+                humidityElement.textContent = valor + '%';
+            } else {
+                humidityElement.textContent = '--%'; // Muestra '--%' si no hay datos
+            }
+
+        } catch (error) {
+            console.error("Error en fetchHumidity:", error);
+            // Si falla, mostramos 'Error' para saber que algo ocurrió
+            humidityElement.textContent = 'Error';
+        }
+    }
+
+    // 1. Ejecutamos la función una vez al cargar la página
+    fetchHumidity();
+
+    // 2. Configuramos un intervalo para que se repita cada 10 segundos
+    // Puede ajustar este tiempo (en milisegundos)
+    setInterval(fetchHumidity, 10000); // 10000 ms = 10 segundos
+}
+
+
+/* ================================================ */
+/* === LÓGICA PARA ACTUALIZAR ACTIVIDAD RECIENTE === */
+/* ================================================ */
+
+function initializeActivityUpdater() {
+    const container = document.getElementById('recentActivityContainer');
+    if (!container) return; // Salir si no estamos en home
+
+    // --- Helper para asignar iconos bonitos ---
+    function getIconForEvent(tipo) {
+        // Valores por defecto
+        let iconClass = 'ri-information-line';
+        let bgClass = 'bg-gray-100';
+        let textClass = 'text-gray-600';
+
+        // Personalización basada en el tipo de evento
+        if (tipo.includes('riego_auto')) {
+            iconClass = 'ri-check-line';
+            bgClass = 'bg-green-100';
+            textClass = 'text-green-600';
+        } else if (tipo.includes('sensor') || tipo.includes('humedad')) {
+            iconClass = 'ri-water-percent-line';
+            bgClass = 'bg-blue-100';
+            textClass = 'text-blue-600';
+        } else if (tipo.includes('error')) {
+            iconClass = 'ri-error-warning-line';
+            bgClass = 'bg-red-100';
+            textClass = 'text-red-600';
+        } else if (tipo.includes('online')) {
+            iconClass = 'ri-wifi-line';
+            bgClass = 'bg-cyan-100';
+            textClass = 'text-cyan-600';
+        }
+        
+        return { iconClass, bgClass, textClass };
+    }
+    // --- Fin del Helper ---
+
+
+    async function fetchActivity() {
+        try {
+            const response = await fetch('/api/actividad_reciente');
+            if (!response.ok) {
+                throw new Error('Error de red al consultar actividad');
+            }
+            
+            const data = await response.json(); // Esperamos una lista []
+
+            // 1. Limpiamos el contenedor
+            container.innerHTML = '';
+
+            // 2. Verificamos si hay eventos
+            if (data.length === 0) {
+                // --- ESTA ES LA LÍNEA MODIFICADA ---
+                container.innerHTML = '<p class="text-sm text-gray-500 text-center">aun no hay datos para mostrar</p>';
+                return;
+            }
+
+            // 3. Recorremos los eventos y creamos el HTML
+            data.forEach(evento => {
+                const icon = getIconForEvent(evento.tipo_evento);
+                
+                // Esta es la plantilla HTML que se insertará
+                const eventHTML = `
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 flex items-center justify-center ${icon.bgClass} rounded-full mt-1 flex-shrink-0">
+                        <i class="${icon.iconClass} ${icon.textClass}"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900">${evento.descripcion}</p>
+                        <p class="text-xs text-gray-600">${evento.timestamp}</p>
+                    </div>
+                </div>
+                `;
+                
+                // Añadimos el nuevo HTML al contenedor
+                container.innerHTML += eventHTML;
+            });
+
+        } catch (error) {
+            console.error("Error en fetchActivity:", error);
+            container.innerHTML = '<p class="text-sm text-red-500 text-center">Error al cargar la actividad.</p>';
+        }
+    }
+
+    // 1. Ejecutamos la función una vez al cargar
+    fetchActivity();
+
+    // 2. Repetimos cada 10 segundos
+    setInterval(fetchActivity, 10000); 
+}

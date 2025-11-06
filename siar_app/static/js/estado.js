@@ -21,7 +21,7 @@ function buildStatusCardHTML(status) {
             <div class="w-12 h-12 flex items-center justify-center bg-green-100 rounded-full"><i class="ri-play-circle-fill text-green-600 text-2xl"></i></div>
         </div>`;
     } else {
-        // Estado 'offline' o cualquier otro
+        // Estado 'offline' o cualquier otro 
         return `
         <div class="flex items-center justify-between">
             <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-red-600 mt-1">Desconectado</p></div>

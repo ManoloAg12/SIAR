@@ -18,6 +18,7 @@ from sqlalchemy import text
 from flask_mail import Message # <-- AÑADIR IMPORTACIÓN
 from . import db, mail # <-- AÑADIR 'mail
 from sqlalchemy import text, not_
+from datetime import datetime, timezone, timedelta
 
 bp = Blueprint('main', __name__)
 
@@ -368,10 +369,13 @@ def aplicar_perfil():
 # ========================================================
     
 #dinamismo para las cartas
+# --- ¡¡FUNCIÓN REEMPLAZADA!! ---
+#dinamismo para las cartas
 @bp.route('/api/get_dynamic_status')
 def get_dynamic_status():
     """
     Devuelve el estado actualizado del dispositivo y la BBDD como JSON.
+    ¡NUEVO: También comprueba si el dispositivo se ha desconectado!
     """
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
@@ -384,11 +388,43 @@ def get_dynamic_status():
         dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
         if dispositivo:
             device_status_val = dispositivo.estado_actual
+            
+            # --- ¡NUEVA LÓGICA DE TIMEOUT! ---
+            # Si el estado es "online" o "regando", verificamos su última lectura.
+            if device_status_val in ['online', 'regando']:
+                # Buscamos la última lectura de humedad (que actúa como "heartbeat")
+                ultima_lectura = tbl_lecturas_humedad.query.filter_by(
+                    dispositivo_id=dispositivo.id
+                ).order_by(tbl_lecturas_humedad.timestamp.desc()).first()
+
+                if ultima_lectura:
+                    # Comparamos el timestamp de la lectura con la hora actual (ambos en UTC)
+                    ahora_utc = datetime.now(timezone.utc)
+                    segundos_transcurridos = (ahora_utc - ultima_lectura.timestamp).total_seconds()
+
+                    # DEFINIMOS EL TIMEOUT (ej: 35 segundos)
+                    # El ESP32 reporta cada 10s, si falla 3 veces seguidas, está offline.
+                    TIMEOUT_SEGUNDOS = 35 
+
+                    if segundos_transcurridos > TIMEOUT_SEGUNDOS:
+                        # ¡El dispositivo se ha desconectado!
+                        print(f"TIMEOUT: Dispositivo {dispositivo.id} está offline. Última lectura hace {segundos_transcurridos}s.")
+                        dispositivo.estado_actual = 'offline'
+                        db.session.commit()
+                        device_status_val = 'offline' # Actualizamos el valor a devolver
+                
+                else:
+                    # Si está 'online' pero NUNCA ha enviado una lectura,
+                    # lo dejamos pasar por ahora (podría estar arrancando).
+                    pass
+            # --- FIN DE LA LÓGICA DE TIMEOUT ---
+            
         else:
             device_status_val = 'No Asignado'
             
     except Exception as e:
-        print(f"Error al buscar dispositivo: {e}")
+        db.session.rollback() # Hacemos rollback en caso de error en la comprobación
+        print(f"Error al buscar dispositivo o comprobar timeout: {e}")
         device_status_val = 'Error'
 
     try:
@@ -403,6 +439,7 @@ def get_dynamic_status():
         "device_status": device_status_val,
         "db_status": db_status_val
     })
+# --- FIN DE LA FUNCIÓN REEMPLAZADA ---
 
 
 
@@ -438,6 +475,71 @@ def toggle_modo_automatico():
 
     except Exception as e:
         db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+
+@bp.route('/api/ultima_humedad')
+def get_ultima_humedad():
+    """
+    Endpoint para que el dashboard consulte la humedad más reciente.
+    """
+    # Validamos que el usuario esté logueado
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
+    try:
+        # Buscamos el dispositivo asociado al usuario en sesión
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        
+        if not dispositivo:
+            return jsonify({"humedad": "--"}) # Usuario no tiene dispositivo
+
+        # Buscamos la última (más reciente) lectura de ese dispositivo
+        lectura = tbl_lecturas_humedad.query.filter_by(dispositivo_id=dispositivo.id).order_by(tbl_lecturas_humedad.timestamp.desc()).first()
+        
+        if lectura:
+            # Devolvemos el valor redondeado
+            return jsonify({"humedad": int(round(lectura.valor_humedad))})
+        else:
+            # No se han registrado lecturas
+            return jsonify({"humedad": "--"}) 
+    
+    except Exception as e:
+        print(f"Error al obtener última humedad: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+
+@bp.route('/api/actividad_reciente')
+def get_actividad_reciente():
+    """
+    Endpoint para que el dashboard consulte los últimos eventos.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
+    try:
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        
+        if not dispositivo:
+            return jsonify([]) # Devuelve lista vacía si no hay dispositivo
+
+        # Buscamos los últimos 5 eventos para este dispositivo
+        eventos = tbl_bitacora_eventos.query.filter_by(dispositivo_id=dispositivo.id).order_by(tbl_bitacora_eventos.timestamp.desc()).limit(5).all()
+        
+        # Formateamos la salida para que sea amigable (JSON)
+        lista_actividad = []
+        for ev in eventos:
+            lista_actividad.append({
+                "tipo_evento": ev.tipo_evento,
+                "descripcion": ev.descripcion,
+                # Formateamos el timestamp para que sea legible
+                "timestamp": ev.timestamp.strftime('%d/%m/%Y %I:%M %p') 
+            })
+            
+        return jsonify(lista_actividad)
+    
+    except Exception as e:
+        print(f"Error al obtener actividad reciente: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- API (Para el ESP32) ---
 # (Sin cambios)
