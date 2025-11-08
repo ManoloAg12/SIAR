@@ -31,3 +31,6 @@ class Config:
     MAIL_USERNAME = 'mano.tech111@gmail.com'
     MAIL_PASSWORD = 'qnyz smqn iblz dcam' # La contraseña de app que ya usó
     MAIL_DEFAULT_SENDER = 'mano.tech111@gmail.com'
+
+    # --- CALIBRACIÓN DE LA BOMBA ---
+    LITROS_POR_SEGUNDO = 0.0277

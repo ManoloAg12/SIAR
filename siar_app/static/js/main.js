@@ -44,17 +44,23 @@ async function updateProgramacionCard() {
 
 
 // Gráfico de consumo de agua
+// En siar_app/static/js/main.js
+
+// Gráfico de consumo de agua (¡VERSIÓN DINÁMICA!)
 function initializeWaterChart() {
     const chartContainer = document.getElementById('waterChart');
     if (!chartContainer) return; 
     
+    // 1. Inicializar el gráfico de ECharts
     const chart = echarts.init(chartContainer);
-    const option = {
-        animation: false,
+    
+    // 2. Definir la plantilla de opciones (el estilo)
+    const optionTemplate = {
+        animation: true, // Ponemos animación
         grid: { top: 20, right: 20, bottom: 40, left: 50, containLabel: false },
         xAxis: {
             type: 'category',
-            data: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom'],
+            data: [], // <--- Se llenará con la API
             axisLine: { show: false }, axisTick: { show: false },
             axisLabel: { color: '#6b7280', fontSize: 12 }
         },
@@ -65,7 +71,7 @@ function initializeWaterChart() {
             axisLabel: { color: '#6b7280', fontSize: 12, formatter: '{value}L' }
         },
         series: [{
-            data: [180, 220, 195, 245, 210, 165, 230],
+            data: [], // <--- Se llenará con la API
             type: 'line', smooth: true, symbol: 'none',
             lineStyle: { color: '#57B5E7', width: 3 },
             areaStyle: {
@@ -81,12 +87,50 @@ function initializeWaterChart() {
             borderColor: '#e5e7eb', borderWidth: 1,
             textStyle: { color: '#1f2937' },
             formatter: function(params) {
+                // params[0].name es la etiqueta del día (ej: "Jue 06")
                 return params[0].name + '<br/>Consumo: ' + params[0].value + 'L';
             }
         }
     };
-    chart.setOption(option);
     
+    // 3. Mostrar el gráfico vacío (mientras cargan los datos)
+    chart.setOption(optionTemplate);
+    
+    // 4. Crear la función para buscar y actualizar los datos
+    async function updateChartData() {
+        try {
+            const response = await fetch('/api/consumo_semanal');
+            if (!response.ok) {
+                throw new Error('Error de red al cargar el gráfico');
+            }
+            
+            const chartData = await response.json(); // Espera: {labels: [...], data: [...]}
+            
+            if (chartData.labels && chartData.data) {
+                // 5. Actualizar el gráfico con los datos reales
+                chart.setOption({
+                    xAxis: {
+                        data: chartData.labels
+                    },
+                    series: [{
+                        data: chartData.data
+                    }]
+                });
+            }
+            
+        } catch (error) {
+            console.error("Error en updateChartData:", error);
+            // (Opcional: mostrar un error en el gráfico)
+        }
+    }
+    
+    // 6. Llamar a la función al iniciar
+    updateChartData();
+    
+    // 7. (Opcional) Refrescar el gráfico cada 60 segundos
+    setInterval(updateChartData, 60000); 
+
+    // 8. Ajustar el tamaño
     window.addEventListener('resize', function() {
         chart.resize();
     });
@@ -332,7 +376,7 @@ function initializeHumidityUpdater() {
 
     // 2. Configuramos un intervalo para que se repita cada 10 segundos
     // Puede ajustar este tiempo (en milisegundos)
-    setInterval(fetchHumidity, 10000); // 10000 ms = 10 segundos
+    setInterval(fetchHumidity, 3000); // 10000 ms = 10 segundos
 }
 
 
@@ -426,4 +470,101 @@ function initializeActivityUpdater() {
 
     // 2. Repetimos cada 10 segundos
     setInterval(fetchActivity, 10000); 
+}
+
+// En siar_app/static/js/main.js
+// (Añada esta función junto a sus otras, como initializeActivityUpdater)
+
+/* ================================================ */
+/* === LÓGICA PARA LOS SWITCHES DE HABILITAR/DESHABILITAR DISPOSITIVO === */
+/* ================================================ */
+
+function initializeDeviceSwitches() {
+    const switches = document.querySelectorAll('.device-toggle-switch');
+    
+    switches.forEach(sw => {
+        sw.addEventListener('click', function() {
+            // Estado actual (antes del clic)
+            const wasActive = this.classList.contains('active'); 
+            // Nuevo estado (el que queremos)
+            const newState = !wasActive; 
+            const deviceId = this.dataset.deviceId;
+
+            let confirmMessage = newState ? 
+                "¿Está seguro de HABILITAR este dispositivo? El sistema comenzará a vigilarlo." :
+                "¿Está seguro de DESHABILITAR este dispositivo (modo mantenimiento)? El dispositivo se forzará a 'offline'.";
+            
+            if (!confirm(confirmMessage)) {
+                return; // El usuario canceló
+            }
+
+            // Llamamos a la nueva API
+            fetch('/api/set_device_manual_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_id: deviceId,
+                    new_state: newState // true = Habilitar, false = Deshabilitar
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    // ¡Éxito!
+                    // La forma más simple de actualizar la UI (el switch Y
+                    // la API key) es recargar la página.
+                    window.location.reload(); 
+                } else {
+                    alert('Error al cambiar el estado: ' + data.message);
+                }
+            })
+            .catch(err => {
+                console.error('Error en fetch:', err);
+                alert('Error de conexión.');
+            });
+        });
+    });
+}
+
+/* ================================================ */
+/* === LÓGICA PARA ACTUALIZAR CONSUMO DE AGUA (REAL) === */
+/* ================================================ */
+
+function initializeWaterUpdater() {
+    const waterElement = document.getElementById('waterConsumptionValue');
+    
+    // Salir si no estamos en la página del home
+    if (!waterElement) return; 
+
+    async function fetchWaterConsumption() {
+        try {
+            // 1. Consultamos el endpoint /api/consumo_agua
+            // (Este endpoint ya lo creamos en routes.py)
+            const response = await fetch('/api/consumo_agua');
+            
+            if (!response.ok) {
+                throw new Error('Error de red al consultar el consumo');
+            }
+            
+            const data = await response.json();
+            
+            // 2. Actualizamos el texto del elemento
+            let valor = data.consumo_total;
+            if (typeof valor === 'number') {
+                waterElement.textContent = valor + 'L'; // Ej: "120.5L"
+            } else {
+                waterElement.textContent = '--L';
+            }
+
+        } catch (error) {
+            console.error("Error en fetchWaterConsumption:", error);
+            waterElement.textContent = 'Error';
+        }
+    }
+
+    // 1. Ejecutamos la función una vez al cargar
+    fetchWaterConsumption();
+
+    // 2. Repetimos cada 10 segundos (igual que las otras tarjetas)
+    setInterval(fetchWaterConsumption, 10000); 
 }

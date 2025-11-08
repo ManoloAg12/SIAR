@@ -2,6 +2,18 @@
 
 {% block content %}
 
+{% if is_raining %}
+<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-6 rounded-lg" role="alert">
+    <div class="flex">
+        <div class="py-1"><i class="ri-cloudy-2-fill text-2xl mr-3"></i></div>
+        <div>
+            <p class="font-bold">¡Alerta de Lluvia!</p>
+            <p class="text-sm">El sistema ha detectado lluvia en su área. El riego automático y la aplicación de perfiles se han pausado temporalmente para ahorrar agua.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="mb-8">
     <div class="flex items-center justify-between">
         <div>
@@ -67,56 +79,75 @@
         {% endif %}
     </div>
     <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
-        <div class="flex items-center justify-between">
-            <div><p class="text-sm font-medium text-gray-600">Consumo de Agua</p><p class="text-2xl font-bold text-indigo-600 mt-1">245L</p></div>
-            <div class="w-12 h-12 flex items-center justify-center bg-indigo-100 rounded-full"><i class="ri-water-percent-line text-indigo-600 text-2xl"></i></div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Consumo de Agua</p>
+                    <p id="waterConsumptionValue" class="text-2xl font-bold text-indigo-600 mt-1">--L</p>
+                </div>
+                <div class="w-12 h-12 flex items-center justify-center bg-indigo-100 rounded-full">
+                    <i class="ri-water-percent-line text-indigo-600 text-2xl"></i>
+                </div>
+            </div>
         </div>
-    </div>
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
     <div class="lg:col-span-2 bg-white rounded-xl shadow-lg p-6"><div class="flex items-center justify-between mb-6"><h3 class="text-xl font-semibold text-gray-900">Consumo de Agua Semanal</h3></div><div id="waterChart" class="h-80"></div></div>
-    <div class="bg-white rounded-xl shadow-lg p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-semibold text-gray-900">Mis Dispositivos</h3>
-            <button id="openDeviceModal" class="text-primary hover:text-primary/80 text-sm font-medium">
-                + Nuevo Dispositivo
-            </button>
-        </div>
-        <div class="space-y-4">
+<div class="bg-white rounded-xl shadow-lg p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h3 class="text-xl font-semibold text-gray-900">Mis Dispositivos</h3>
+        <button id="openDeviceModal" class="text-primary hover:text-primary/80 text-sm font-medium">
+            + Nuevo Dispositivo
+        </button>
+    </div>
+
+    <div class="space-y-4">
+        
+        {% if dispositivos %}
+            {% for disp in dispositivos %}
             
-            {% if dispositivos %}
-                {% for disp in dispositivos %}
-                <div class="p-4 bg-gray-50 rounded-lg">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-10 h-10 flex items-center justify-center bg-blue-100 rounded-lg">
-                                <i class="ri-hard-drive-2-line text-blue-600"></i>
-                            </div>
-                            <div>
-                                <p class="font-medium text-gray-900">{{ disp.nombre_dispositivo }}</p>
-                                <p class="text-sm text-gray-600">Estado: {{ disp.estado_actual }}</p>
-                            </div>
+            {% set esta_activo = (disp.estado_actual == 'online' or disp.estado_actual == 'regando') %}
+
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 flex items-center justify-center bg-blue-100 rounded-lg">
+                            <i class="ri-hard-drive-2-line text-blue-600"></i>
                         </div>
-                        </div>
-                    <div class="mt-4 p-3 bg-gray-200 rounded-lg flex items-center justify-between">
-                        <div class="flex-1 overflow-hidden">
-                            <p class="text-xs text-gray-600 font-medium">API KEY (Para el instalador):</p>
-                            <p id="api-key-text-{{ disp.id }}" class="text-sm font-mono text-gray-800 truncate">
-                                {{ disp.device_api_key }}
+                        <div>
+                            <p class="font-medium text-gray-900">{{ disp.nombre_dispositivo }}</p>
+                            <p id="device-status-text-{{ disp.id }}" class="text-sm text-gray-600">
+                                Estado: {{ disp.estado_actual }}
                             </p>
                         </div>
-                        <button class="copy-api-key-btn bg-gray-600 text-white px-3 py-1 rounded-lg hover:bg-gray-700 ml-2" 
-                                data-key="{{ disp.device_api_key }}">
-                            <i class="ri-file-copy-line"></i>
-                        </button>
+                    </div>
+                    
+                    <div class="custom-switch device-toggle-switch {% if esta_activo %}active{% endif %}" 
+                         data-device-id="{{ disp.id }}">
                     </div>
                 </div>
-                {% endfor %}
-            {% else %}
-                <p class="text-gray-500 text-center">No ha registrado ningún dispositivo.</p>
-            {% endif %}
-            
-        </div>
+
+                {% if disp.estado_actual == 'offline_manual' %}
+                <div id="api-key-container-{{ disp.id }}" class="mt-4 p-3 bg-gray-200 rounded-lg flex items-center justify-between">
+                    <div class="flex-1 overflow-hidden">
+                        <p class="text-xs text-gray-600 font-medium">API KEY (Para el instalador):</p>
+                        <p class="text-sm font-mono text-gray-800 truncate">
+                            {{ disp.device_api_key }}
+                        </p>
+                    </div>
+                    <button class="copy-api-key-btn bg-gray-600 text-white px-3 py-1 rounded-lg hover:bg-gray-700 ml-2" 
+                            data-key="{{ disp.device_api_key }}">
+                        <i class="ri-file-copy-line"></i>
+                    </button>
+                </div>
+                {% endif %}
+                
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-gray-500 text-center">No ha registrado ningún dispositivo.</p>
+        {% endif %}
+        
+    </div>
     </div>
 </div>
 
@@ -301,12 +332,15 @@
         initializeCopyButtons();
         initializeHumidityUpdater();
         initializeActivityUpdater();
+        initializeDeviceSwitches();
+        initializeWaterUpdater();
         // Funciones del estado.js
             initializeRefreshButton(); // <--- Para el botón de clic manual
         
         // --- ¡LÍNEA AÑADIDA! ---
         // Inicia el refresco automático cada 10 segundos (10000 ms)
-        startAutomaticPolling(10000);
+        startAutomaticPolling(3000);
+
 
     });
 </script>
