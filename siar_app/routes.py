@@ -12,7 +12,8 @@ from flask import (
 from . import db
 from .models import (
     tbl_usuarios, tbl_paises, tbl_configuracion, 
-    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego
+    tbl_lecturas_humedad, tbl_bitacora_eventos, tbl_dispositivos, tbl_perfiles_riego, 
+    tbl_horarios
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text 
@@ -20,6 +21,9 @@ from flask_mail import Message # <-- AÑADIR IMPORTACIÓN
 from . import db, mail # <-- AÑADIR 'mail
 from sqlalchemy import text, not_
 from datetime import datetime, timezone, timedelta
+# --- ¡NUEVO! DEFINIMOS SU ZONA HORARIA LOCAL ---
+# GMT-6 (El Salvador)
+USER_TIMEZONE = timezone(timedelta(hours=-6))
 
 bp = Blueprint('main', __name__)
 
@@ -128,38 +132,35 @@ def logout():
     return redirect(url_for('main.login'))
 
 #Api para crear perfiles de riego 
+# En siar_app/routes.py
+
 @bp.route('/api/crear_perfil', methods=['POST'])
 def crear_perfil():
-    """
-    API Endpoint para crear un nuevo perfil de riego.
-    Recibe datos de un formulario.
-    """
+    """Crea un nuevo perfil de riego (con doble umbral)."""
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
     
     try:
-        # Usamos request.form porque enviaremos datos de formulario, no JSON
         data = request.form
-        
-        # Validamos que los datos numéricos no estén vacíos
-        umbral = data.get('umbral_humedad')
+        umbral_min = data.get('umbral_humedad_min')
+        umbral_max = data.get('umbral_humedad_max')
         duracion = data.get('duracion_riego_seg')
-        frecuencia = data.get('frecuencia_minima_horas')
 
-        if not (umbral and duracion and frecuencia):
-            flash('Todos los campos numéricos son obligatorios.', 'danger')
-            return jsonify({"status": "error", "message": "Campos numéricos obligatorios"}), 400
+        if not (umbral_min and umbral_max and duracion):
+            return jsonify({"status": "error", "message": "Todos los campos numéricos son obligatorios"}), 400
 
-        # Creamos el nuevo objeto de perfil
+        # Validar que min sea menor que max
+        if int(umbral_min) >= int(umbral_max):
+             return jsonify({"status": "error", "message": "El Umbral Mínimo debe ser menor que el Umbral Máximo"}), 400
+
         nuevo_perfil = tbl_perfiles_riego(
             usuario_id=session['user_id'],
             nombre_perfil=data.get('nombre_perfil'),
             descripcion=data.get('descripcion'),
-            umbral_humedad=int(umbral),
-            duracion_riego_seg=int(duracion),
-            frecuencia_minima_horas=int(frecuencia)
+            umbral_humedad_min=int(umbral_min),
+            umbral_humedad_max=int(umbral_max),
+            duracion_riego_seg=int(duracion)
         )
-        
         db.session.add(nuevo_perfil)
         db.session.commit()
         
@@ -168,8 +169,6 @@ def crear_perfil():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error al crear perfil: {e}")
-        flash(f'Error al crear perfil: {e}', 'danger')
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # api para el clima
@@ -216,7 +215,9 @@ def get_weather(city, country_code):
 
 
 # En siar_app/routes.py
+# En siar_app/routes.py
 
+# --- RUTA PRINCIPAL (MODIFICADA) ---
 @bp.route('/home')
 def home():
     if 'user_id' not in session:
@@ -226,13 +227,10 @@ def home():
     current_user_id = session['user_id']
     user_name = session.get('user_name', 'Usuario')
     device_status = 'Desconocido'
-    perfiles_list = []
-    weather_data = None
     configuracion_actual = None 
-    dispositivos_list = []
-    
-    # ¡NUEVA VARIABLE!
+    horarios_list = []
     is_raining = False 
+    has_events = False 
     
     try:
         usuario = tbl_usuarios.query.get(current_user_id)
@@ -240,30 +238,42 @@ def home():
             flash("Error de sesión, inicie de nuevo.", 'danger')
             return redirect(url_for('main.login'))
 
-        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).first()
+        dispositivos_list = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).order_by(tbl_dispositivos.nombre_dispositivo).all()
+        perfiles_list = tbl_perfiles_riego.query.order_by(tbl_perfiles_riego.nombre_perfil).all()
+        
+        # Asumimos 1 dispositivo por ahora
+        dispositivo = dispositivos_list[0] if dispositivos_list else None
         
         if dispositivo:
             device_status = dispositivo.estado_actual
             configuracion_actual = dispositivo.configuracion
+            # ¡NUEVO! Cargar los horarios de ESE dispositivo
+            horarios_list = tbl_horarios.query.filter_by(dispositivo_id=dispositivo.id).order_by(tbl_horarios.hora_riego).all()
         else:
             device_status = 'No Asignado'
 
-        dispositivos_list = tbl_dispositivos.query.filter_by(usuario_id=current_user_id).order_by(tbl_dispositivos.nombre_dispositivo).all()
-        perfiles_list = tbl_perfiles_riego.query.order_by(tbl_perfiles_riego.nombre_perfil).all()
-        
+        # Chequeo de clima
         if usuario.ciudad and usuario.pais:
             weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
-            
-            # --- ¡NUEVA LÓGICA DE CLIMA! ---
             if weather_data:
                 condiciones_lluvia = ['Rain', 'Drizzle', 'Thunderstorm', 'Snow']
                 if weather_data['main_condition'] in condiciones_lluvia:
                     is_raining = True
-            # --- FIN LÓGICA DE CLIMA ---
+        
+        # Chequeo de eventos (para botón de reporte)
+        if dispositivos_list:
+            device_ids = [d.id for d in dispositivos_list]
+            event_count = db.session.query(tbl_bitacora_eventos.id).filter(
+                tbl_bitacora_eventos.dispositivo_id.in_(device_ids),
+                tbl_bitacora_eventos.tipo_evento.like('riego%')
+            ).count()
+            if event_count > 0:
+                has_events = True
             
     except Exception as e:
         print(f"Error al buscar datos del dashboard: {e}")
 
+    # (Lógica de db_status sin cambios)
     db_status = "Desconectado"
     try:
         db.session.execute(text('SELECT 1'))
@@ -281,8 +291,67 @@ def home():
         weather=weather_data,
         configuracion_actual=configuracion_actual,
         dispositivos=dispositivos_list,
-        is_raining=is_raining  # <-- ¡NUEVA VARIABLE PASADA AL TEMPLATE!
+        horarios=horarios_list, # <-- ¡NUEVO!
+        is_raining=is_raining,
+        has_events=has_events
     )
+
+# En siar_app/routes.py
+# (Asegúrese de tener Message, mail, tbl_usuarios, tbl_dispositivos,
+# tbl_bitacora_eventos, session, jsonify, y render_template importados)
+
+@bp.route('/api/send_report_email', methods=['POST'])
+def send_report_email():
+    """
+    Recopila todos los datos del usuario y envía el reporte por correo.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+
+    try:
+        usuario = tbl_usuarios.query.get(session['user_id'])
+        if not usuario:
+            return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
+
+        # 1. Obtener todos los dispositivos del usuario
+        dispositivos_usuario = tbl_dispositivos.query.filter_by(usuario_id=usuario.id).all()
+        if not dispositivos_usuario:
+             return jsonify({"status": "error", "message": "No tiene dispositivos"}), 400
+
+        # 2. Obtener los IDs de esos dispositivos
+        device_ids = [d.id for d in dispositivos_usuario]
+
+        # 3. Obtener TODOS los eventos de riego de esos dispositivos
+        eventos_riego = tbl_bitacora_eventos.query.filter(
+            tbl_bitacora_eventos.dispositivo_id.in_(device_ids),
+            tbl_bitacora_eventos.tipo_evento.like('riego%')
+        ).order_by(tbl_bitacora_eventos.timestamp.desc()).all()
+
+        if not eventos_riego:
+            return jsonify({"status": "error", "message": "No hay eventos de riego para reportar."}), 400
+
+        # 4. Renderizar el template del email con los datos
+        html_body = render_template(
+            'email/report_email.html', 
+            usuario=usuario, 
+            dispositivos=dispositivos_usuario, # Lista de objetos dispositivo
+            eventos=eventos_riego             # Lista de objetos evento
+        )
+        
+        # 5. Configurar y enviar el correo
+        msg = Message(
+            subject="SIAR - Reporte de Actividad de Riego",
+            recipients=[usuario.email],
+            html=html_body
+        )
+        mail.send(msg)
+        
+        print(f"Reporte de correo enviado exitosamente a {usuario.email}")
+        return jsonify({"status": "ok", "message": "Reporte enviado exitosamente."})
+
+    except Exception as e:
+        print(f"Error al enviar reporte por correo: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 # crear dispositivo 
 # ===== CAMBIO 1: API /crear_dispositivo (MODIFICADA) =====
 @bp.route('/api/crear_dispositivo', methods=['POST'])
@@ -328,75 +397,158 @@ def crear_dispositivo():
 
 #api para aplicar perfil 
 # ===== CAMBIO 2: API /aplicar_perfil (MODIFICADA) =====
-@bp.route('/api/aplicar_perfil', methods=['POST'])
-def aplicar_perfil():
+
+# ========================================================
+# En siar_app/routes.py
+
+@bp.route('/api/crear_horario', methods=['POST'])
+def crear_horario():
+    """
+    Crea o ACTUALIZA un horario programado.
+    ¡MODIFICADO! Ahora TAMBIÉN actualiza el perfil de emergencia.
+    """
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
+    
     try:
-        data = request.json
+        data = request.form
         perfil_id = data.get('perfil_id')
-        device_id = data.get('device_id') # <-- ¡NUEVO CAMPO!
-
-        if not perfil_id or not device_id:
-            return jsonify({"status": "error", "message": "Faltan perfil_id o device_id"}), 400
-
-        perfil = tbl_perfiles_riego.query.get(perfil_id)
-        if not perfil:
-            return jsonify({"status": "error", "message": "Perfil no encontrado"}), 404
+        hora_riego_str = data.get('hora_riego') 
+        dias_semana_list = request.form.getlist('dias_semana')
+        device_id = data.get('device_id')
         
-        # ¡LÓGICA CORREGIDA!
-        # Buscamos el dispositivo por su ID y nos aseguramos de que pertenezca al usuario en sesión.
-        dispositivo_usuario = tbl_dispositivos.query.filter_by(
+        if not device_id:
+             return jsonify({"status": "error", "message": "Falta 'device_id'"}), 400
+        
+        dispositivo = tbl_dispositivos.query.filter_by(
             id=device_id, 
             usuario_id=session['user_id']
         ).first()
+        
+        if not dispositivo:
+            return jsonify({"status": "error", "message": "Dispositivo no encontrado"}), 404
+        
+        if not perfil_id or not hora_riego_str or not dias_semana_list:
+            return jsonify({"status": "error", "message": "Todos los campos son requeridos"}), 400
 
-        if not dispositivo_usuario:
-             return jsonify({"status": "error", "message": "Dispositivo no encontrado o no autorizado"}), 404
+        dias_string = ",".join(dias_semana_list)
+        hora_obj = datetime.strptime(hora_riego_str, '%H:%M').time()
 
-        # Validar que el dispositivo esté online (lógica existente)
-        if dispositivo_usuario.estado_actual != 'online':
-             return jsonify({"status": "error", "message": f"Error: El dispositivo está '{dispositivo_usuario.estado_actual}'."}), 400
-
-        config_activa = dispositivo_usuario.configuracion
-
-        if config_activa:
-            print(f"Actualizando config para DISPOSITIVO ID: {device_id}")
-            config_activa.umbral_humedad_minima = perfil.umbral_humedad
-            config_activa.duracion_riego_segundos = perfil.duracion_riego_seg
-            config_activa.frecuencia_minima_horas = perfil.frecuencia_minima_horas
-            config_activa.perfil_activo_id = perfil.id
-        else:
-            print(f"Creando nueva config para DISPOSITIVO ID: {device_id}")
+        # --- ¡LÓGICA DE CONFIGURACIÓN CORREGIDA! ---
+        config_activa = dispositivo.configuracion
+        
+        if not config_activa:
+            # Si no hay config, la creamos con el perfil_id
             config_activa = tbl_configuracion(
-                dispositivo_id=dispositivo_usuario.id,
-                umbral_humedad_minima=perfil.umbral_humedad,
-                duracion_riego_segundos=perfil.duracion_riego_seg,
-                frecuencia_minima_horas = perfil.frecuencia_minima_horas,
-                modo_automatico=True,
-                perfil_activo_id = perfil.id    
+                dispositivo_id=dispositivo.id,
+                perfil_activo_id=perfil_id, 
+                modo_automatico=True
             )
             db.session.add(config_activa)
+            print(f"Configuración creada para Dispositivo {dispositivo.id}")
+        else:
+            # Si YA hay config, FORZAMOS la actualización del perfil de emergencia.
+            config_activa.perfil_activo_id = perfil_id 
+            print(f"Perfil de emergencia actualizado a ID: {perfil_id} para Dispositivo {dispositivo.id}")
+        # --- FIN DE CORRECCIÓN ---
+
+        # --- Lógica de "Upsert" de Horario (sin cambios) ---
+        mensaje_exito = ""
+        # 1. Buscar si ya existe CUALQUIER horario para ESE dispositivo
+        horario_existente = tbl_horarios.query.filter_by(
+            dispositivo_id=dispositivo.id
+        ).first()
+
+        if horario_existente:
+            # 2. Si existe, ACTUALIZARLO (sobrescribir)
+            print(f"Actualizando horario existente (ID: {horario_existente.id}) a las {hora_obj}...")
+            horario_existente.perfil_id = perfil_id
+            horario_existente.dias_semana = dias_string
+            horario_existente.hora_riego = hora_obj 
+            horario_existente.activo = True
+            mensaje_exito = "Horario actualizado exitosamente."
+        else:
+            # 3. Si no existe, CREARLO
+            print(f"Creando nuevo horario a las {hora_obj}...")
+            nuevo_horario = tbl_horarios(
+                dispositivo_id=dispositivo.id,
+                perfil_id=perfil_id,
+                hora_riego=hora_obj,
+                dias_semana=dias_string,
+                activo=True
+            )
+            db.session.add(nuevo_horario)
+            mensaje_exito = "Horario creado exitosamente."
+        # --- Fin Lógica Upsert ---
         
         db.session.commit()
-        return jsonify({"status": "ok", "message": f"Perfil '{perfil.nombre_perfil}' aplicado a '{dispositivo_usuario.nombre_dispositivo}'."})
-    
+        
+        flash(mensaje_exito, 'success')
+        return jsonify({"status": "ok", "message": mensaje_exito}), 201
+
     except Exception as e:
         db.session.rollback()
+        print(f"Error al crear/actualizar horario: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-# ========================================================
-    
 #dinamismo para las cartas
 # --- ¡REEMPLAZAR LA FUNCIÓN ANTIGUA POR ESTA! ---
 
 # En siar_app/routes.py
 # (Asegúrese de tener 'get_weather', 'tbl_usuarios', etc. importados)
+@bp.route('/api/system_status')
+def get_system_status():
+    """
+    Devuelve el estado actual del sistema para el sondeo (polling) del frontend.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "No autorizado"}), 401
+
+    try:
+        # 1. Obtener el dispositivo y su estado
+        dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        
+        if not dispositivo:
+            return jsonify({
+                "device_status": "No Asignado",
+                "is_raining": False,
+                "modo_automatico": False
+            })
+
+        device_status = dispositivo.estado_actual # 'online', 'offline', 'regando'
+
+        # 2. Obtener la configuración
+        config = tbl_configuracion.query.filter_by(dispositivo_id=dispositivo.id).first()
+        modo_automatico = config.modo_automatico if config else False
+
+        # 3. (IMPORTANTE) Lógica para verificar la lluvia
+        # Necesitamos re-llamar a la API del clima aquí
+        is_raining = False # Por defecto
+        usuario = tbl_usuarios.query.get(session['user_id'])
+        
+        if usuario.ciudad and usuario.pais:
+            weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
+            if weather_data and weather_data['main_condition'] == 'Rain':
+                is_raining = True
+
+        return jsonify({
+            "device_status": device_status,
+            "is_raining": is_raining,
+            "modo_automatico": modo_automatico
+        })
+
+    except Exception as e:
+        print(f"Error en /api/system_status: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# En siar_app/routes.py
+# (Asegúrese de tener 'datetime', 'timezone', 'tbl_usuarios', 'db', 'text', 'get_weather', 'jsonify', 'session' importados)
 
 @bp.route('/api/get_dynamic_status')
 def get_dynamic_status():
     """
     Devuelve el estado actualizado.
-    ¡MODIFICADO! Ahora también devuelve el estado de lluvia.
+    ¡MODIFICADO! Esta función YA NO pone dispositivos 'online',
+    solo se encarga de marcarlos 'offline' por timeout.
     """
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
@@ -405,10 +557,10 @@ def get_dynamic_status():
     db_status_val = "Desconectado"
     device_id_val = None
     device_status_text = 'Desconocido'
-    is_raining_val = False # <-- ¡NUEVO!
+    is_raining_val = False 
     
     try:
-        usuario = tbl_usuarios.query.get(session['user_id']) # <-- ¡NUEVO! Necesitamos al usuario para el clima
+        usuario = tbl_usuarios.query.get(session['user_id']) 
         if not usuario:
              return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
 
@@ -419,31 +571,40 @@ def get_dynamic_status():
             device_id_val = dispositivo.id
             device_status_val = dispositivo.estado_actual
             
-            # --- Lógica de Timeout (existente) ---
-            if device_status_val in ['online', 'regando', 'offline']:
+            # --- LÓGICA DE TIMEOUT MODIFICADA ---
+            
+            # Solo aplicamos timeout si el dispositivo CREE estar 'online' o 'regando'
+            if device_status_val in ['online', 'regando']:
+                
                 if dispositivo.last_heartbeat:
                     ahora_utc = datetime.now(timezone.utc)
                     segundos_transcurridos = (ahora_utc - dispositivo.last_heartbeat).total_seconds()
-                    TIMEOUT_SEGUNDOS = 20 # 4s * 3 fallos + margen
+                    
+                    # Mantenemos los 20 segundos como solicitó
+                    TIMEOUT_SEGUNDOS = 20 
 
                     if segundos_transcurridos > TIMEOUT_SEGUNDOS:
-                        if device_status_val != 'offline':
-                            print(f"TIMEOUT: Dispositivo {dispositivo.id} está offline. Último latido hace {segundos_transcurridos}s.")
-                            dispositivo.estado_actual = 'offline' 
-                            db.session.commit()
-                        device_status_val = 'offline'
-                    else:
-                        if device_status_val == 'offline':
-                            device_status_val = 'online'
-                            dispositivo.estado_actual = 'online'
-                            db.session.commit()
-                else:
-                    segundos_creado = (datetime.now(timezone.utc) - dispositivo.fecha_creacion).total_seconds()
-                    if segundos_creado > 60:
-                        dispositivo.estado_actual = 'offline'
+                        # Ha pasado demasiado tiempo, lo marcamos offline
+                        print(f"TIMEOUT: Dispositivo {dispositivo.id} está offline. Último latido hace {segundos_transcurridos}s.")
+                        dispositivo.estado_actual = 'offline' 
                         db.session.commit()
                         device_status_val = 'offline'
-            # --- Fin Timeout ---
+                    
+                    # Si no ha pasado el timeout, 'device_status_val' ('online' o 'regando') es correcto.
+                    # ELIMINAMOS EL BLOQUE 'ELSE' QUE FORZABA A 'ONLINE'.
+                    
+                else:
+                    # Si el estado es 'online' pero no hay latido (recién creado o error),
+                    # lo forzamos a 'offline' para corregir el estado.
+                    print(f"CORRECCIÓN: Dispositivo {dispositivo.id} estaba 'online' sin latido. Forzando a 'offline'.")
+                    dispositivo.estado_actual = 'offline'
+                    db.session.commit()
+                    device_status_val = 'offline'
+            
+            # Si el estado es 'offline' o 'offline_manual', simplemente lo reportamos.
+            # No hacemos nada más. 'device_status_val' ya es correcto.
+            
+            # --- Fin Lógica Timeout ---
             
         else:
             device_status_val = 'No Asignado'
@@ -455,7 +616,7 @@ def get_dynamic_status():
         except Exception as e:
             db_status_val = f"Error: {e}"
 
-        # 3. ¡NUEVO! Revisar estado del clima
+        # 3. Revisar estado del clima
         if usuario.ciudad and usuario.pais:
             weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
             if weather_data:
@@ -482,9 +643,8 @@ def get_dynamic_status():
         "db_status": db_status_val,
         "device_id": device_id_val,
         "device_status_text": device_status_text,
-        "is_raining": is_raining_val # <-- ¡NUEVO DATO!
+        "is_raining": is_raining_val
     })
-
 
 
 #dinamismo para el togle de activar el modo automatico
@@ -646,6 +806,7 @@ def get_consumo_semanal():
     """
     (PARA EL DASHBOARD)
     Calcula el consumo de agua de los últimos 7 días para el gráfico.
+    ¡MODIFICADO! Ahora usa la zona horaria local (GMT-6) para agrupar los días.
     """
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
@@ -657,33 +818,40 @@ def get_consumo_semanal():
 
         caudal = Config.LITROS_POR_SEGUNDO
         
-        # Preparar los contenedores para los 7 días
         labels = []
         data = []
-        hoy = datetime.now(timezone.utc).date() # Fecha de hoy en UTC
+        
+        # --- ¡CAMBIO AQUÍ! ---
+        # Antes: hoy = datetime.now(timezone.utc).date()
+        # Ahora: Usamos la hora local para saber qué día es "hoy"
+        hoy_local = datetime.now(USER_TIMEZONE).date() 
+        # --- FIN DEL CAMBIO ---
 
-        # Regex para extraer segundos (igual que en /api/consumo_agua)
         regex_segundos = re.compile(r'(\d+(\.\d+)?)s')
         
-        # Iteramos desde hace 6 días hasta hoy (7 días total)
         for i in range(6, -1, -1):
-            dia = hoy - timedelta(days=i)
+            dia = hoy_local - timedelta(days=i) # 'dia' es ahora una fecha local (ej: Martes 11)
             
-            # Formato de etiqueta (ej: "Jue 06/11")
-            # (Nota: 'strftime' puede variar entre sistemas, '%a' es local)
-            # Vamos a usar un formato simple para los días
             dias_semana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab', 'Dom']
-            labels.append(f"{dias_semana[dia.weekday()]} {dia.day:02d}") # Ej: "Jue 06"
+            labels.append(f"{dias_semana[dia.weekday()]} {dia.day:02d}")
 
-            # Buscamos eventos de riego SÓLO para ESE día
-            inicio_dia = datetime(dia.year, dia.month, dia.day, 0, 0, 0, tzinfo=timezone.utc)
-            fin_dia = inicio_dia + timedelta(days=1)
+            # --- ¡CAMBIO AQUÍ! ---
+            # Creamos los límites del día (00:00 y 23:59) USANDO LA ZONA HORARIA LOCAL
+            
+            # Ej: 11-Nov 00:00:00 (GMT-6)
+            inicio_dia_local = datetime(dia.year, dia.month, dia.day, 0, 0, 0, tzinfo=USER_TIMEZONE)
+            
+            # Ej: 12-Nov 00:00:00 (GMT-6)
+            fin_dia_local = inicio_dia_local + timedelta(days=1)
+            # --- FIN DEL CAMBIO ---
             
             eventos_del_dia = tbl_bitacora_eventos.query.filter(
                 tbl_bitacora_eventos.dispositivo_id == dispositivo.id,
                 tbl_bitacora_eventos.tipo_evento.like('riego%'),
-                tbl_bitacora_eventos.timestamp >= inicio_dia,
-                tbl_bitacora_eventos.timestamp < fin_dia
+                # SQLAlchemy convertirá automáticamente estas horas locales a UTC
+                # para compararlas con la base de datos (que está en UTC/TIMESTAMPTZ)
+                tbl_bitacora_eventos.timestamp >= inicio_dia_local,
+                tbl_bitacora_eventos.timestamp < fin_dia_local
             ).all()
 
             total_segundos_dia = 0
@@ -693,80 +861,74 @@ def get_consumo_semanal():
                     if match:
                         total_segundos_dia += float(match.group(1))
             
-            consumo_dia = round(total_segundos_dia * caudal, 1) # Redondeamos a 1 decimal
+            consumo_dia = round(total_segundos_dia * caudal, 1)
             data.append(consumo_dia)
 
-        # Devolvemos los datos listos para el gráfico
         return jsonify({"labels": labels, "data": data})
 
     except Exception as e:
         print(f"Error al obtener consumo semanal: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-# --- API (Para el ESP32) ---
 # (Sin cambios)
 
 # api para conectar asl ESP32
+# En siar_app/routes.py
+
+# En siar_app/routes.py
+
 @bp.route('/api/configuracion', methods=['GET'])
 def get_configuracion():
     """
     Entrega la configuración al ESP32.
-    ¡MODIFICADO! Esta ruta ahora comprueba el clima antes de responder.
+    NO envía umbrales si no hay perfil asignado.
     """
     
-    # --- Identificar el dispositivo y usuario ---
     api_key = request.args.get('device_key')
-    if not api_key:
-        return jsonify({"error": "Falta 'device_key'"}), 400
-
+    if not api_key: return jsonify({"error": "Falta 'device_key'"}), 400
     dispositivo = tbl_dispositivos.query.filter_by(device_api_key=api_key).first()
-    if not dispositivo:
-        return jsonify({"error": "Dispositivo no autorizado"}), 404
-        
-    usuario = dispositivo.usuario # Obtenemos el usuario a través de la relación
+    if not dispositivo: return jsonify({"error": "Dispositivo no autorizado"}), 404
+    
+    usuario = dispositivo.usuario
     config_obj = dispositivo.configuracion
     
-    # --- Obtener el estado del clima ---
     is_raining = False
     if usuario.ciudad and usuario.pais:
         weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
         if weather_data:
-            # Lista de condiciones de OpenWeatherMap que cuentan como lluvia
-            condiciones_lluvia = ['Rain', 'Drizzle', 'Thunderstorm', 'Snow'] 
+            condiciones_lluvia = ['Rain', 'Drizzle', 'Thunderstorm', 'Snow']
             if weather_data['main_condition'] in condiciones_lluvia:
                 is_raining = True
-                print(f"ALERTA DE LLUVIA: Detectada lluvia ({weather_data['main_condition']}) para {usuario.ciudad}.")
 
-    # --- Decidir la configuración final ---
+    # --- LÓGICA DE CONFIGURACIÓN MODIFICADA ---
     
-    # 1. Obtener la configuración guardada por el usuario
-    if config_obj:
-        modo_auto_guardado = config_obj.modo_automatico
-        umbral_min = config_obj.umbral_humedad_minima
-        duracion_seg = config_obj.duracion_riego_segundos
-        frecuencia_min_horas = config_obj.frecuencia_minima_horas
-    else:
-        # Valores por defecto si no hay perfil aplicado
-        modo_auto_guardado = False
-        umbral_min = 50
-        duracion_seg = 1
-        frecuencia_min_horas = 999
-        
-    # 2. ¡Lógica de anulación!
-    # Si el usuario quería modo automático, PERO está lloviendo...
-    if modo_auto_guardado and is_raining:
-        modo_auto_final = False # ¡Anulamos!
-        print("Anulación por lluvia: Enviando modo_auto=False al ESP32.")
-    else:
-        modo_auto_final = modo_auto_guardado # Respetamos la configuración
-        
-    # 3. Preparar la respuesta para el ESP32
+    # 1. Preparamos el JSON base
     config_data = {
-        "umbral_min": umbral_min,
-        "duracion_seg": duracion_seg,
-        "modo_auto": modo_auto_final, # <-- ¡Enviamos el valor final!
-        "frecuencia_min_horas": frecuencia_min_horas
+        "modo_programado_activo": False,
+        "horarios": []
     }
     
+    # 2. Revisamos si hay configuración (perfil de emergencia)
+    if config_obj and config_obj.perfil_activo:
+        # ¡SÍ HAY PERFIL! Añadimos los umbrales.
+        config_data["umbral_min"] = config_obj.perfil_activo.umbral_humedad_min
+        config_data["umbral_max"] = config_obj.perfil_activo.umbral_humedad_max
+        
+        # 3. Revisamos el modo automático (solo si hay config)
+        if config_obj.modo_automatico and not is_raining:
+            config_data["modo_programado_activo"] = True
+
+    # 4. (Sin cambios) Obtenemos los horarios
+    horarios_db = tbl_horarios.query.filter_by(dispositivo_id=dispositivo.id, activo=True).all()
+    lista_horarios_json = []
+    for h in horarios_db:
+        lista_horarios_json.append({
+            "hora": h.hora_riego.strftime('%H:%M'),
+            "dias": h.dias_semana,
+            "duracion": h.perfil.duracion_riego_seg
+        })
+    config_data["horarios"] = lista_horarios_json
+    # --- FIN DE MODIFICACIÓN ---
+
     return jsonify(config_data)
 
 #Api para conocer las lecturas de la humedad del suelo#Api para conocer las lecturas de la humedad del suelo
@@ -788,27 +950,25 @@ def post_lectura():
         if not dispositivo:
             return jsonify({"status": "error", "message": "Dispositivo no encontrado"}), 404
 
-        # --- ¡LÓGICA CORREGIDA! ---
+        # --- ¡LÓGICA MODIFICADA! ---
         
-        # 1. El latido SIEMPRE actualiza el estado y el timestamp del latido
-        if dispositivo.estado_actual != 'offline_manual':
-            dispositivo.estado_actual = 'online'
+        # 1. El latido actualiza el timestamp
+        dispositivo.last_heartbeat = datetime.now(timezone.utc)
+
+        # 2. Solo cambia a 'online' SI el estado era 'offline'.
+        # Respeta 'offline_manual', 'regando', y 'online'.
+        if dispositivo.estado_actual == 'offline':
+             dispositivo.estado_actual = 'online'
         
-        dispositivo.last_heartbeat = datetime.now(timezone.utc) # <-- ¡ACTUALIZA EL LATIDO!
+        # 3. Guardamos la lectura (SIN RECHAZAR 0% o 100%)
+        nueva_lectura = tbl_lecturas_humedad(
+            dispositivo_id=dispositivo.id,
+            valor_humedad=humedad
+        )
+        db.session.add(nueva_lectura)
+        print(f"Datos (latido) ({humedad}%) recibidos y guardados.")
+        # --- FIN DE MODIFICACIÓN ---
 
-        # 2. Decidimos si guardamos la lectura (evitar 0% o 100%)
-        if (humedad == 100 or humedad == 0):
-            print(f"Latido ({humedad}%) de {dispositivo.nombre_dispositivo} recibido. Heartbeat actualizado, pero DATO RECHAZADO.")
-        else:
-            # El dato es válido (ej: 45.3%), lo guardamos
-            nueva_lectura = tbl_lecturas_humedad(
-                dispositivo_id=dispositivo.id,
-                valor_humedad=humedad
-            )
-            db.session.add(nueva_lectura)
-            print(f"Datos (latido) ({humedad}%) recibidos y guardados.")
-
-        # 3. Guardamos los cambios (estado y/o lectura)
         db.session.commit()
         return jsonify({"status": "recibido"}), 201
         

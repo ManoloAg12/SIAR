@@ -81,35 +81,43 @@ class tbl_bitacora_eventos(db.Model):
     descripcion = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
+# En siar_app/models.py
+# (Asegúrese de tener 'db' y 'func' importados)
+
 class tbl_perfiles_riego(db.Model):
     __tablename__ = 'tbl_perfiles_riego'
     id = db.Column(db.Integer, primary_key=True)
-    
-    # Llave foránea para que cada usuario tenga sus propios perfiles
     usuario_id = db.Column(db.Integer, db.ForeignKey('tbl_usuarios.id'), nullable=False)
     
-    # --- Campos solicitados por usted ---
-    
-    # 1. Nombre (ej: "Rosas", "Huerto", "Suculentas")
     nombre_perfil = db.Column(db.String(100), nullable=False) 
+    descripcion = db.Column(db.Text, nullable=True)
     
-    # 2. Descripcion (ej: "Para rosas que necesitan tierra húmeda pero no encharcada")
-    descripcion = db.Column(db.Text, nullable=True) # La hacemos opcional
+    # --- ¡LÓGICA CORREGIDA! ---
+    # 1. Umbral de EMERGENCIA (Si baja de esto, regar)
+    umbral_humedad_min = db.Column(db.SmallInteger, nullable=False, default=25)
     
-    # 3. Humedad (El umbral MÍNIMO antes de que se active el riego)
-    umbral_humedad = db.Column(db.SmallInteger, nullable=False) # Ej: 35 (para 35%)
-    
-    # 4. Tiempo de Riego (Cuántos segundos regará la bomba)
-    duracion_riego_seg = db.Column(db.SmallInteger, nullable=False) # Ej: 20 (para 20 segundos)
-    
-    # --- Campo que le sugiero (¡Importante!) ---
-    
-    # 5. Frecuencia de Riego (Cuántas horas esperar como MÍNIMO entre riegos)
-    #    Esto es vital para evitar que el sistema riegue 10 veces en un día
-    #    solo porque la tierra se seca rápido.
-    frecuencia_minima_horas = db.Column(db.SmallInteger, default=4, nullable=False)
+    # 2. Umbral de AHORRO (Si supera esto, NO regar)
+    umbral_humedad_max = db.Column(db.SmallInteger, nullable=False, default=60)
 
-
+    # 3. Duración (Para riegos PROGRAMADOS)
+    duracion_riego_seg = db.Column(db.SmallInteger, nullable=False, default=10)
     
-    # Relación con el usuario
+    # --- 'frecuencia_minima_horas' HA SIDO ELIMINADO ---
+    
     usuario = db.relationship('tbl_usuarios', backref=db.backref('perfiles', lazy=True))
+    horarios = db.relationship('tbl_horarios', backref='perfil', lazy=True)
+
+
+class tbl_horarios(db.Model):
+    __tablename__ = 'tbl_horarios'
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # A qué dispositivo pertenece este horario
+    dispositivo_id = db.Column(db.Integer, db.ForeignKey('tbl_dispositivos.id'), nullable=False)
+    
+    # Qué perfil (y por tanto qué duración/umbral) debe usar
+    perfil_id = db.Column(db.Integer, db.ForeignKey('tbl_perfiles_riego.id'), nullable=False)
+    
+    hora_riego = db.Column(db.Time, nullable=False)
+    dias_semana = db.Column(db.String(15), nullable=False) # "1,3,5" (L,M,V)
+    activo = db.Column(db.Boolean, nullable=False, default=True)

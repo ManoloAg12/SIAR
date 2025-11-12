@@ -19,11 +19,16 @@
         <div>
             <h2 class="text-3xl font-bold text-gray-900">Panel de Control</h2>
             <p class="text-gray-600 mt-1">Bienvenido a tu sistema de riego inteligente</p>
-            <p id="status-bbdd-wrapper" class="text-sm text-gray-500 mt-1">
-                Estado BBDD: {{ db_status }}
-            </p> 
+ 
         </div>
         <div class="flex items-center space-x-3">
+        <button id="btn-send-report" 
+                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all whitespace-nowrap !rounded-button
+                           {% if not has_events %}opacity-50 cursor-not-allowed{% endif %}"
+                    {% if not has_events %}disabled{% endif %}>
+                <i class="ri-mail-send-line mr-2"></i>
+                Enviar Reporte
+        </button>
             <button id="btn-actualizar-dash" class="bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 transition-all whitespace-nowrap !rounded-button">
                 <i class="ri-refresh-line mr-2"></i>Actualizar
             </button>
@@ -160,56 +165,74 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     
 <div id="programacion-automatica-wrapper" class="bg-white rounded-xl shadow-lg p-6">
-        <h3 class="text-xl font-semibold text-gray-900 mb-6">Programación Automática</h3>
         
-        {% if configuracion_actual %}
-            <div class="space-y-4">
-                <div class="flex items-center justify-between p-4 border border-green-200 bg-green-50 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
-                            <i class="ri-plant-line text-green-600"></i>
-                        </div>
-                        <div>
-                        <p class="font-medium text-gray-900">
-                        Riego Inteligente 
-                            <span id="modo-automatico-status">
-                            {% if configuracion_actual.modo_automatico %}
-                                (<b class="text-green-600">Activo</b>)
-                            {% else %}
-                                (<b class="text-red-600">Desactivado</b>)
-                            {% endif %}
-                            </span>
-                        </p>
-                            <p class="font-medium text-gray-900"><b class="text-primary">
-                            {% if configuracion_actual.perfil_activo %}
-                                {{ configuracion_actual.perfil_activo.nombre_perfil }}
-                            {% else %}
-                                (Personalizado)
-                            {% endif %}
-                        </b></p>
-                            <p class="text-sm text-gray-600">
-                                Umbral: <b>{{ configuracion_actual.umbral_humedad_minima }}%</b> | 
-                                Duración: <b>{{ configuracion_actual.duracion_riego_segundos }}s</b> |
-                                Frecuencia Mín: <b>{{ configuracion_actual.frecuencia_minima_horas }}h</b>
-                            </p>
-                        </div>
+        {% if configuracion_actual and configuracion_actual.perfil_activo %}
+            <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p class="font-medium text-gray-900">Riego de Emergencia</p>
+                <p class="text-sm text-gray-600">
+                    Controlado por el perfil: <b class="text-primary">{{ configuracion_actual.perfil_activo.nombre_perfil }}</b>
+                </p>
+                <p class="text-sm text-gray-600">
+                    Regar si baja de: <b>{{ configuracion_actual.perfil_activo.umbral_humedad_min }}%</b>
+                </p>
+                 <p class="text-sm text-gray-600">
+                    No regar si supera: <b>{{ configuracion_actual.perfil_activo.umbral_humedad_max }}%</b>
+                </p>
+            </div>
+
+            <div class="flex items-center justify-between p-4 border border-green-200 bg-green-50 rounded-lg mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
+                        <i class="ri-calendar-check-line text-green-600"></i>
                     </div>
                     {% set device_is_active = (device_status == 'online' or device_status == 'regando') %}
                     {% set switch_disabled = (is_raining or not device_is_active) %}
-
-                    <div class="custom-switch 
-                        {% if configuracion_actual.modo_automatico and not switch_disabled %}active{% endif %} 
-                        {% if switch_disabled %}opacity-50 cursor-not-allowed{% endif %}"
-                        data-config="modo_automatico" 
-                        data-is-raining="{{ is_raining }}"
-                        data-device-status="{{ device_status }}">
+                    <div>
+                        <p class="font-medium text-gray-900">Riego Programado (Horarios)</p>
+                        <span id="modo-automatico-status">
+                        {% if configuracion_actual.modo_automatico and not switch_disabled %}
+                            (<b class="text-green-600">Activo</b>)
+                        {% else %}
+                            (<b class="text-red-600">Desactivado</b>)
+                        {% endif %}
+                        </span>
                     </div>
                 </div>
+                <div class="custom-switch 
+                     {% if configuracion_actual.modo_automatico and not switch_disabled %}active{% endif %} 
+                     {% if switch_disabled %}opacity-50 cursor-not-allowed{% endif %}"
+                     data-config="modo_automatico" 
+                     data-is-raining="{{ is_raining }}"
+                     data-device-status="{{ device_status }}">
                 </div>
+            </div>
+
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-gray-900">Mis Horarios</h3>
+            </div>
+            <div class="space-y-2">
+                {% if horarios and horarios|length > 0 %}
+                    {% for horario in horarios %}
+                    <div class="flex items-center justify-between p-2 border-b">
+                        <div class="flex items-center space-x-3">
+                            <i class="ri-time-line text-gray-500"></i>
+                            <div>
+                                <p class="font-medium text-gray-900">{{ horario.hora_riego.strftime('%I:%M %p') }}</small>
+                                <p class="text-xs text-gray-600">Perfil: <b class="text-primary">{{ horario.perfil.nombre_perfil }}</b> (Riega {{ horario.perfil.duracion_riego_seg }}s)</p>
+                                <p class="text-xs text-gray-500">Días: {{ "L" if "1" in horario.dias_semana else "" }} {{ "M" if "2" in horario.dias_semana else "" }} {{ "X" if "3" in horario.dias_semana else "" }} {{ "J" if "4" in horario.dias_semana else "" }} {{ "V" if "5" in horario.dias_semana else "" }} {{ "S" if "6" in horario.dias_semana else "" }} {{ "D" if "7" in horario.dias_semana else "" }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-sm text-gray-500 text-center">No hay horarios programados.</p>
+                {% endif %}
+            </div>
+
         {% else %}
             <p class="text-sm text-gray-500 text-center">
                 Aún no se ha configurado un dispositivo. 
-                Vaya a "Perfiles de Riego" y <b>Aplique</b> uno para comenzar.
+                Vaya a "Mis Dispositivos" y <b>Aplique un Perfil</b> para comenzar.
             </p>
         {% endif %}
     </div>
@@ -224,7 +247,7 @@
 </div>
 
 <div class="grid grid-cols-1 gap-8 mt-8">
-    <div class="bg-white rounded-xl shadow-lg p-6">
+<div class="bg-white rounded-xl shadow-lg p-6">
         <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-semibold text-gray-900">Perfiles de Riego</h3>
             <button id="openProfileModal" class="text-primary hover:text-primary/80 text-sm font-medium">
@@ -235,43 +258,57 @@
         <div class="space-y-4">
             {% if perfiles %}
                 {% for perfil in perfiles %}
-                {% if perfil.usuario_id == current_user_id %}
-                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-lg"><i class="ri-price-tag-3-line text-gray-600"></i></div>
-                            <div>
-                                <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }} <span class="text-xs text-green-600">(Mi Perfil)</span></p>
-                                <p class="text-sm text-gray-600">{{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)</p>
+                <div class="p-4 border border-gray-200 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-lg">
+                            <i class="ri-price-tag-3-line text-gray-600"></i>
+                        </div>
+                        
+                        <div>
+                            <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }}</p>
+                            
+                            <p class="text-sm text-gray-500 italic mb-2">
+                                {{ perfil.descripcion or 'Sin descripción' }}
+                            </p>
+                            
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+                                
+                                <span class="flex items-center" title="Umbral Mínimo (Emergencia)">
+                                    <i class="ri-arrow-down-line text-red-500 mr-1"></i>
+                                    <b>{{ perfil.umbral_humedad_min }}%</b>
+                                </span>
+                                
+                                <span class="text-gray-300">|</span>
+                                
+                                <span class="flex items-center" title="Umbral Máximo (Ahorro)">
+                                    <i class="ri-arrow-up-line text-green-500 mr-1"></i>
+                                    <b>{{ perfil.umbral_humedad_max }}%</b>
+                                </span>
+                                
+                                <span class="text-gray-300">|</span>
+                                
+                                <span class="flex items-center" title="Duración Riego Programado">
+                                    <i class="ri-timer-line text-blue-500 mr-1"></i>
+                                    <b>{{ perfil.duracion_riego_seg }}s</b>
+                                </span>
                             </div>
                         </div>
-                        <button class="apply-profile-btn bg-secondary text-white px-4 py-2 rounded-lg hover:opacity-90 !rounded-button" data-id="{{ perfil.id }}">Aplicar</button>
-                    </div>
-                {% else %}
-                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-lg"><i class="ri-group-line text-gray-600"></i></div>
-                            <div>
-                                <p class="font-medium text-gray-900">{{ perfil.nombre_perfil }}</p>
-                                <p class="text-sm text-gray-600">{{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)</p>
-                            </div>
                         </div>
-                    </div>
-                {% endif %}
+                </div>
                 {% endfor %}
             {% else %}
-                <p class="text-gray-500 text-center">No hay perfiles de riego creados. ¡Crea el primero!</p>
+                <p class="text-gray-500 text-center">No hay perfiles de riego creados.</p>
             {% endif %}
         </div>
     </div>
 </div>
-
+</div>
 <div id="newProfileModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
         <div class="flex items-start justify-between mb-4">
-            <h3 class="text-xl font-semibold text-gray-900">Crear Nuevo Perfil de Riego</h3>
-            <button id="closeProfileModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            <h3 class="text-xl font-semibold text-gray-900">Crear Nuevo Perfil</h3>
+            <button type="button" id="closeProfileModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
-        
         <form id="profileForm" class="space-y-4">
             <div>
                 <label for="perfil_nombre" class="block text-sm font-medium text-gray-700">Nombre del Perfil</label>
@@ -281,27 +318,30 @@
                 <label for="perfil_descripcion" class="block text-sm font-medium text-gray-700">Descripción Breve</label>
                 <textarea id="perfil_descripcion" name="descripcion" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
             </div>
+
             <div class="grid grid-cols-3 gap-4">
                 <div>
-                    <label for="perfil_umbral" class="block text-sm font-medium text-gray-700">Umbral Humedad (%)</label>
-                    <input type="number" id="perfil_umbral" name="umbral_humedad" placeholder="Ej: 30" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                    <label for="perfil_umbral_min" class="block text-sm font-medium text-gray-700">Umbral Mín (%)</label>
+                    <input type="number" id="perfil_umbral_min" name="umbral_humedad_min" placeholder="Ej: 25" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                </div>
+                <div>
+                    <label for="perfil_umbral_max" class="block text-sm font-medium text-gray-700">Umbral Máx (%)</label>
+                    <input type="number" id="perfil_umbral_max" name="umbral_humedad_max" placeholder="Ej: 60" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
                 </div>
                 <div>
                     <label for="perfil_duracion" class="block text-sm font-medium text-gray-700">Duración Riego (seg)</label>
-                    <input type="number" id="perfil_duracion" name="duracion_riego_seg" placeholder="Ej: 20" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-                </div>
-                <div>
-                    <label for="perfil_frecuencia" class="block text-sm font-medium text-gray-700">Frecuencia Mín. (h)</label>
-                    <input type="number" id="perfil_frecuencia" name="frecuencia_minima_horas" value="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                    <input type="number" id="perfil_duracion" name="duracion_riego_seg" placeholder="Ej: 10" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
                 </div>
             </div>
             <div class="flex justify-end space-x-4 pt-4">
-                <button type="button" id="cancelProfileModal" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">Cancelar</button>
-                <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">Guardar Perfil</button>
+                 <button type="button" id="cancelProfileModal" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">Cancelar</button>
+                 <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">Guardar Perfil</button>
             </div>
         </form>
     </div>
 </div>
+
+
 
 <div id="newDeviceModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
@@ -330,34 +370,51 @@
 </div>
 
 <div id="applyProfileToDeviceModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
         
         <div class="flex items-start justify-between mb-4">
             <div>
-                <h3 class="text-xl font-semibold text-gray-900">Aplicar Perfil</h3>
+                <h3 class="text-xl font-semibold text-gray-900">Añadir Horario Programado</h3>
                 <p id="modalDeviceName" class="text-gray-600"></p> 
             </div>
             <button id="closeApplyModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
         
         <form id="applyProfileForm" class="space-y-4">
-            <input type="hidden" id="modalDeviceId" value=""> 
+            <input type="hidden" id="modalDeviceId" name="device_id" value=""> 
             
             <div>
-                <label for="profileSelect" class="block text-sm font-medium text-gray-700">Seleccione un perfil:</label>
+                <label for="profileSelect" class="block text-sm font-medium text-gray-700">¿Qué Perfil aplicar?</label>
                 <select id="profileSelect" name="perfil_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-                    <option value="">Cargando perfiles...</option>
+                    <option value="">Seleccione un perfil...</option>
                     {% if perfiles %}
                         {% for perfil in perfiles %}
-                        <option value="{{ perfil.id }}">{{ perfil.nombre_perfil }} (Umbral: {{ perfil.umbral_humedad }}%)</option>
+                        <option value="{{ perfil.id }}">{{ perfil.nombre_perfil }} (Riega por {{ perfil.duracion_riego_seg }}s)</option>
                         {% endfor %}
                     {% endif %}
                 </select>
             </div>
             
+            <div>
+                <label for="horario_hora_modal" class="block text-sm font-medium text-gray-700">¿A qué hora?</label>
+                <input type="time" id="horario_hora_modal" name="hora_riego" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">¿Qué días?</label>
+                <div class="mt-2 grid grid-cols-7 gap-2 text-center">
+                    {% for dia_nombre, dia_num in [('D', '7'), ('L', '1'), ('M', '2'), ('X', '3'), ('J', '4'), ('V', '5'), ('S', '6')] %}
+                    <div>
+                        <label for="modal_dia_{{ dia_num }}" class="block text-xs font-medium">{{ dia_nombre }}</label>
+                        <input type="checkbox" id="modal_dia_{{ dia_num }}" name="dias_semana" value="{{ dia_num }}" class="mt-1 h-5 w-5 rounded">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
             <div class="flex justify-end space-x-4 pt-4">
                 <button type="button" id="cancelApplyModal" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
-                <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80">Aplicar a Dispositivo</button>
+                <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80">Guardar Horario</button>
             </div>
         </form>
     </div>
@@ -369,25 +426,29 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Llamamos a todas las funciones que 'home.html' necesita.
+// Llamadas a funciones (ahora definidas en main.js)
         initializeWaterChart();
         initializeSwitches();
         initializeTimeUpdate();
-        initializeAplicarPerfilModal();
+        initializeAplicarPerfilModal(); // <-- Llamada única
         initializeProfileModal(); 
-        initializeLogoutModal(); // Esta llamada ya está en base.html
-        initializeRefreshButton();
+        initializeLogoutModal(); 
+        initializeRefreshButton(); // <-- Llamada única
         initializeDeviceModal();
         initializeCopyButtons();
         initializeHumidityUpdater();
         initializeActivityUpdater();
         initializeDeviceSwitches();
         initializeWaterUpdater();
-        // Funciones del estado.js
-            initializeRefreshButton(); // <--- Para el botón de clic manual
+        initializeSendReportButton();
         
-        // --- ¡LÍNEA AÑADIDA! ---
-        // Inicia el refresco automático cada 10 segundos (10000 ms)
+
+        
+        // Inicia el refresco automático
         startAutomaticPolling(3000);
+
+        
+
 
 
     });

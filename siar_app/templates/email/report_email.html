@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-TABLE">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { width: 90%; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .header { font-size: 24px; color: #57B5E7; }
+        .content p { font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        .footer { margin-top: 20px; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">Reporte de Actividad SIAR</h1>
+        
+        <div class="content">
+            <p>Hola, {{ usuario.nombre_completo }}:</p>
+            <p>Aquí está su reporte de actividad de riego solicitado para todos sus dispositivos. Este informe incluye todos los eventos de riego (automáticos y programados) registrados en el sistema.</p>
+            
+            <h2>Bitácora Completa de Riego</h2>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Dispositivo</th>
+                        <th>Fecha y Hora</th>
+                        <th>Tipo de Evento</th>
+                        <th>Descripción (Detalle)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if eventos %}
+                        {% for evento in eventos %}
+                        <tr>
+                            <td>{{ dispositivos|selectattr('id', 'equalto', evento.dispositivo_id)|map(attribute='nombre_dispositivo')|first|default('ID Desconocido') }}</td>
+                            <td>{{ evento.timestamp.strftime('%Y-%m-%d %I:%M %p') }}</td>
+                            <td>{{ evento.tipo_evento }}</td>
+                            <td>{{ evento.descripcion }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center;">No se encontraron eventos de riego.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>Este es un correo automático. Por favor, no responda.</p>
+            <p>&copy; 2025 SIAR. Todos los derechos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

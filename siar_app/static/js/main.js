@@ -136,7 +136,6 @@ function initializeWaterChart() {
     });
 }
 
-// ===== FUNCIÓN DE SWITCHES (MODIFICADA) =====
 
 // ===== FUNCIÓN DE SWITCHES (MODIFICADA CON BLOQUEO POR LLUVIA Y ESTADO) =====
 function initializeSwitches() {
@@ -145,17 +144,8 @@ function initializeSwitches() {
     
     switches.forEach(switch_ => {
         
-        // --- Deshabilitar el switch visualmente si llueve O está offline ---
-        const isRainingOnLoad = switch_.dataset.isRaining === 'True';
-        const deviceStatusOnLoad = switch_.dataset.deviceStatus;
-        const deviceIsActiveOnLoad = (deviceStatusOnLoad === 'online' || deviceStatusOnLoad === 'regando');
-
-        if (isRainingOnLoad || !deviceIsActiveOnLoad) {
-            switch_.classList.add('opacity-50', 'cursor-not-allowed');
-            switch_.classList.remove('active'); // Forzarlo a apagado
-        }
-        // --- Fin del bloque ---
-
+        // Su lógica de 'onclick' está perfecta.
+        // Se encarga de ENVIAR el cambio al servidor.
         switch_.onclick = function() {
             
             // El usuario intenta prenderlo (pasar de gris a azul)
@@ -183,6 +173,9 @@ function initializeSwitches() {
             this.classList.toggle('active');
             const newState = this.classList.contains('active');
             
+            // Actualizamos el texto inmediatamente (UI Optimista)
+            updateModoAutomaticoStatus(newState);
+
             fetch('/api/toggle_modo_automatico', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -191,22 +184,136 @@ function initializeSwitches() {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    updateModoAutomaticoStatus(newState);
                     console.log('Modo automático actualizado a: ' + newState);
+                    // El texto ya se actualizó, así que solo confirmamos.
                 } else {
                     alert('Error al actualizar el modo: ' + data.message);
-                    this.classList.toggle('active'); // Revertir
+                    // Revertimos el cambio si falló
+                    this.classList.toggle('active'); 
+                    updateModoAutomaticoStatus(!newState);
                 }
             })
             .catch(error => {
                 console.error('Error en fetch:', error);
                 alert('Error de conexión.');
-                this.classList.toggle('active'); // Revertir
+                // Revertimos el cambio si falló
+                this.classList.toggle('active'); 
+                updateModoAutomaticoStatus(!newState);
             });
         };
     });
 }
 
+/*
+  Esta es la nueva función que actualiza el texto "Activo" / "Desactivado"
+  basado en el estado que recibe (true/false).
+*/
+function updateModoAutomaticoStatus(isActive) {
+    // 1. Buscamos el SPAN por el ID que usted definió en el HTML
+    const statusElement = document.getElementById('modo-automatico-status');
+    
+    if (!statusElement) {
+        // console.warn("No se encontró el elemento 'modo-automatico-status' para actualizar.");
+        return; // Salir si no existe
+    }
+
+    // 2. Cambiamos el HTML interno según el estado
+    if (isActive) {
+        // Si el nuevo estado es 'true' (activo)
+        statusElement.innerHTML = '(<b class="text-green-600">Activo</b>)';
+    } else {
+        // Si el nuevo estado es 'false' (desactivado)
+        statusElement.innerHTML = '(<b class="text-red-600">Desactivado</b>)';
+    }
+}
+
+/**
+ * ¡NUEVA FUNCIÓN DE SONDEO (POLLING)!
+ * Esta función consulta la API de estado y actualiza el switch
+ * y el texto de forma dinámica.
+ */
+function pollSystemStatus() {
+    const switchElement = document.querySelector('.custom-switch[data-config="modo_automatico"]');
+    if (!switchElement) {
+        return; // No estamos en la página del dashboard
+    }
+
+    fetch('/api/system_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'error') {
+                console.warn("Error al sondear estado: " + data.message);
+                return;
+            }
+
+            const deviceIsActive = (data.device_status === 'online' || data.device_status === 'regando');
+            const switchIsDisabled = (data.is_raining || !deviceIsActive);
+
+            // 1. Actualizar los data-attributes para que el 'onclick' tenga la info más reciente
+            switchElement.dataset.isRaining = data.is_raining; // 'True' o 'False'
+            switchElement.dataset.deviceStatus = data.device_status;
+
+            // 2. Actualizar estado visual (Habilitado/Deshabilitado)
+            if (switchIsDisabled) {
+                switchElement.classList.add('opacity-50', 'cursor-not-allowed');
+                // Forzamos a que esté "apagado" si llueve o está desconectado
+                if (switchElement.classList.contains('active')) {
+                    switchElement.classList.remove('active');
+                }
+            } else {
+                // Si no debe estar deshabilitado, quitamos las clases de bloqueo
+                switchElement.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 3. Sincronizar el switch (Azul/Gris) con el estado de la BBDD
+            // Solo si no está deshabilitado
+            if (!switchIsDisabled) {
+                if (data.modo_automatico) {
+                    switchElement.classList.add('active');
+                } else {
+                    switchElement.classList.remove('active');
+                }
+            }
+            
+            // 4. Sincronizar el texto (Activo/Desactivado)
+            // El texto debe reflejar el estado de la BBDD, pero también el bloqueo
+            const effectiveState = data.modo_automatico && !switchIsDisabled;
+            updateModoAutomaticoStatus(effectiveState);
+
+            // --- ¡EXTRA! Actualizar otros elementos ---
+            // Aquí puede actualizar el widget de "Estado del Sistema" también
+            // (Esta lógica es un ejemplo, habría que darle IDs a esos elementos en home.html)
+            const deviceStatusText = document.getElementById('device-status-text');
+            if (deviceStatusText) {
+                if (data.device_status === 'regando') deviceStatusText.innerText = 'Regando';
+                else if (data.device_status === 'online') deviceStatusText.innerText = 'En Espera';
+                else deviceStatusText.innerText = 'Desconectado';
+            }
+
+        })
+        .catch(error => {
+            console.error('Error en sondeo de estado:', error);
+            // Si falla el sondeo (ej. se cae el server), deshabilitar el switch
+            switchElement.classList.add('opacity-50', 'cursor-not-allowed');
+            switchElement.classList.remove('active');
+            updateModoAutomaticoStatus(false);
+        });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. Inicializar el modal de logout (en todas las páginas)
+    initializeLogoutModal();
+    
+    // 2. Inicializar los switches (solo se activará en 'home.html')
+    initializeSwitches();
+
+    // 3. ¡NUEVO! Iniciar el sondeo (polling)
+    // Ejecuta la función 1 vez al cargar, y luego cada 5 segundos.
+    pollSystemStatus(); 
+    setInterval(pollSystemStatus, 5000); // 5000ms = 5 segundos
+
+    /* NOTA: Las funciones específicas (como 'initializeWaterChart')
+       deben seguir llamándose desde el bloque <script> en 'home.html' */
+});
 // Actualización del tiempo
 function initializeTimeUpdate() {
     const lastUpdateElement = document.getElementById('lastUpdate');
@@ -675,3 +782,186 @@ function initializeAplicarPerfilModal() {
         });
     });
 }
+
+/* ================================================ */
+/* === LÓGICA BOTÓN ENVIAR REPORTE POR CORREO === */
+/* ================================================ */
+function initializeSendReportButton() {
+    const btn = document.getElementById('btn-send-report');
+    if (!btn) return;
+
+    const defaultHTML = btn.innerHTML; // Guardar el estado original
+
+    btn.addEventListener('click', function() {
+        if (!confirm('¿Está seguro de que desea enviar un reporte completo de la bitácora a su correo?')) {
+            return;
+        }
+
+        // 1. Poner estado de "Cargando"
+        btn.innerHTML = '<i class="ri-loader-4-line animate-spin mr-2"></i>Enviando...';
+        btn.disabled = true;
+
+        fetch('/api/send_report_email', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                // 2. Poner estado de "Éxito"
+                btn.innerHTML = '<i class="ri-check-line mr-2"></i>¡Reporte Enviado!';
+            } else {
+                // 3. Poner estado de "Error"
+                alert('Error al enviar: ' + data.message);
+                btn.innerHTML = '<i class="ri-error-warning-line mr-2"></i>Error';
+            }
+            
+            // 4. Resetear el botón después de 4 segundos
+            setTimeout(() => {
+                btn.innerHTML = defaultHTML;
+                btn.disabled = false;
+            }, 4000);
+        })
+        .catch(err => {
+            console.error('Error fetch:', err);
+            alert('Error de conexión con el servidor.');
+            btn.innerHTML = defaultHTML;
+            btn.disabled = false;
+        });
+    });
+}
+
+/* ================================================ */
+/* === LÓGICA MODAL: AÑADIR HORARIO === */
+/* ================================================ */
+
+function initializeHorarioModal() {
+    const modal = document.getElementById('newHorarioModal');
+    // Botón para abrir el modal
+    const openButton = document.getElementById('openHorarioModal');
+    
+    if (!modal || !openButton) return; // Salir si los elementos no están
+
+    const closeButton = document.getElementById('closeHorarioModal');
+    const cancelButton = document.getElementById('cancelHorarioModal');
+    const form = document.getElementById('horarioForm');
+
+    const openModal = () => modal.classList.remove('hidden');
+    const closeModal = () => modal.classList.add('hidden');
+
+    // Asignar eventos
+    openButton.addEventListener('click', openModal);
+    closeButton.addEventListener('click', closeModal);
+    cancelButton.addEventListener('click', closeModal);
+
+    // Enviar formulario
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Recopilamos los días seleccionados
+        const formData = new FormData(form);
+        const diasSeleccionados = formData.getAll('dias_semana');
+        
+        if (diasSeleccionados.length === 0) {
+            alert('Debe seleccionar al menos un día de la semana.');
+            return;
+        }
+
+        fetch('/api/crear_horario', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('¡Horario creado con éxito!');
+                window.location.reload(); // Recargar para ver el nuevo horario
+            } else {
+                alert('Error al crear el horario: ' + data.message);
+            }
+        })
+        .catch(err => {
+            console.error('Error en fetch (crear_horario):', err);
+            alert('Error de conexión con el servidor.');
+        });
+    });
+}
+
+// ==========================================================
+    // === LÓGICA MODAL: APLICAR PERFIL (AHORA ES AÑADIR HORARIO)
+    // ==========================================================
+    // (Esta función debe estar definida antes de 'DOMContentLoaded' o dentro del script)
+    function initializeAplicarPerfilModal() {
+        const modal = document.getElementById('applyProfileToDeviceModal');
+        if (!modal) return;
+
+        const openButtons = document.querySelectorAll('.open-apply-modal-btn');
+        const closeButton = document.getElementById('closeApplyModal');
+        const cancelButton = document.getElementById('cancelApplyModal');
+        const form = document.getElementById('applyProfileForm');
+        const deviceNameEl = document.getElementById('modalDeviceName');
+        const deviceIdInput = document.getElementById('modalDeviceId');
+        const profileSelect = document.getElementById('profileSelect');
+        const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+        const timeInput = form.querySelector('input[type="time"]');
+
+        const openModal = (deviceId, deviceName) => {
+            deviceNameEl.textContent = `Dispositivo: ${deviceName}`;
+            deviceIdInput.value = deviceId; // Guardamos el ID en el input oculto
+            
+            // Reseteamos el formulario
+            profileSelect.value = ""; 
+            timeInput.value = "";
+            checkboxes.forEach(cb => cb.checked = false);
+            
+            modal.classList.remove('hidden');
+        };
+
+        const closeModal = () => modal.classList.add('hidden');
+
+        openButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const deviceId = this.dataset.deviceId;
+                const deviceName = this.dataset.deviceName;
+                openModal(deviceId, deviceName);
+            });
+        });
+
+        closeButton.addEventListener('click', closeModal);
+        cancelButton.addEventListener('click', closeModal);
+
+        // --- ¡LÓGICA DE ENVÍO MODIFICADA! ---
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            const diasSeleccionados = formData.getAll('dias_semana');
+
+            if (diasSeleccionados.length === 0) {
+                alert('Debe seleccionar al menos un día de la semana.');
+                return;
+            }
+            
+            // Ya no usamos JSON, usamos FormData
+            // El 'device_id' ya está en el FormData gracias al input oculto.
+
+            // Cambiamos el endpoint de /api/aplicar_perfil a /api/crear_horario
+            fetch('/api/crear_horario', {
+                method: 'POST',
+                body: formData // Enviamos el formulario completo
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert(data.message); // Ej: "Horario creado"
+                    closeModal();
+                    window.location.reload(); // Recargamos para ver el cambio
+                } else {
+                    alert('Error al crear horario: ' + data.message);
+                }
+            })
+            .catch(err => {
+                console.error('Error en fetch (crear_horario):', err);
+                alert('Error de conexión.');
+            });
+        });
+    }
