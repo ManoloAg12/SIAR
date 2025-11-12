@@ -55,28 +55,28 @@
                 </div>
                 
                 <div class="flex items-center space-x-4">
-                        <div class="flex items-center space-x-2">
-                            
-                            {% if device_status == 'online' %}
-                                <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
-                                    <i class="ri-wifi-line text-green-600 text-sm"></i>
-                                </div>
-                                <span class="text-sm text-gray-600">En línea</span>
+                    <div id="nav-status-indicator" class="flex items-center space-x-2">
+                        
+                        {% if device_status == 'online' %}
+                            <div class="w-8 h-8 flex items-center justify-center bg-green-100 rounded-full">
+                                <i class="ri-wifi-line text-green-600 text-sm"></i>
+                            </div>
+                            <span class="text-sm text-gray-600">En línea</span>
 
-                            {% elif device_status == 'regando' %}
-                                <div class="w-8 h-8 flex items-center justify-center bg-blue-100 rounded-full status-active">
-                                    <i class="ri-drop-line text-blue-600 text-sm"></i>
-                                </div>
-                                <span class="text-sm text-gray-600">Regando...</span>
+                        {% elif device_status == 'regando' %}
+                            <div class="w-8 h-8 flex items-center justify-center bg-blue-100 rounded-full status-active">
+                                <i class="ri-drop-line text-blue-600 text-sm"></i>
+                            </div>
+                            <span class="text-sm text-gray-600">Regando...</span>
 
-                            {% else %}
-                                <div class="w-8 h-8 flex items-center justify-center bg-red-100 rounded-full">
-                                    <i class="ri-wifi-off-line text-red-600 text-sm"></i>
-                                </div>
-                                <span class="text-sm text-gray-600">Desconectado</span>
-                            {% endif %}
-                            
-                        </div>
+                        {% else %}
+                            <div class="w-8 h-8 flex items-center justify-center bg-red-100 rounded-full">
+                                <i class="ri-wifi-off-line text-red-600 text-sm"></i>
+                            </div>
+                            <span class="text-sm text-gray-600">Desconectado</span>
+                        {% endif %}
+                        
+                    </div>
                     <div class="flex items-center space-x-3">
                         <button class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-full hover:bg-gray-100">
                             <i class="ri-notification-3-line"></i>

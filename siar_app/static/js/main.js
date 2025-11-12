@@ -137,41 +137,72 @@ function initializeWaterChart() {
 }
 
 // ===== FUNCIÓN DE SWITCHES (MODIFICADA) =====
+
+// ===== FUNCIÓN DE SWITCHES (MODIFICADA CON BLOQUEO POR LLUVIA Y ESTADO) =====
 function initializeSwitches() {
-    const switches = document.querySelectorAll('.custom-switch');
+    // Buscamos solo el switch de modo automático
+    const switches = document.querySelectorAll('.custom-switch[data-config="modo_automatico"]');
     
     switches.forEach(switch_ => {
-        // Usamos un listener de 'click' que sea único para evitar duplicados
+        
+        // --- Deshabilitar el switch visualmente si llueve O está offline ---
+        const isRainingOnLoad = switch_.dataset.isRaining === 'True';
+        const deviceStatusOnLoad = switch_.dataset.deviceStatus;
+        const deviceIsActiveOnLoad = (deviceStatusOnLoad === 'online' || deviceStatusOnLoad === 'regando');
+
+        if (isRainingOnLoad || !deviceIsActiveOnLoad) {
+            switch_.classList.add('opacity-50', 'cursor-not-allowed');
+            switch_.classList.remove('active'); // Forzarlo a apagado
+        }
+        // --- Fin del bloque ---
+
         switch_.onclick = function() {
+            
+            // El usuario intenta prenderlo (pasar de gris a azul)
+            const wantsToActivate = !this.classList.contains('active'); 
+
+            if (wantsToActivate) {
+                // --- ¡NUEVA LÓGICA DE BLOQUEO POR ESTADO! ---
+                const deviceStatus = this.dataset.deviceStatus;
+                if (deviceStatus !== 'online' && deviceStatus !== 'regando') {
+                    alert("¡Dispositivo Desconectado!\n\nNo se puede activar el modo automático si el dispositivo no está en línea.");
+                    return; // Detener la ejecución
+                }
+                // --- FIN DE LÓGICA DE BLOQUEO POR ESTADO ---
+
+                // --- LÓGICA DE BLOQUEO POR LLUVIA (Existente) ---
+                const isRaining = this.dataset.isRaining === 'True';
+                if (isRaining) {
+                    alert("¡Alerta de Lluvia!\n\nNo se puede activar el modo automático mientras el sistema detecta lluvia.");
+                    return; // Detener la ejecución
+                }
+                // --- FIN DE LÓGICA DE BLOQUEO POR LLUVIA ---
+            }
+
+            // Si no hay bloqueos, o si el usuario está APAGANDO el switch, continuar.
             this.classList.toggle('active');
             const newState = this.classList.contains('active');
-            const configType = this.dataset.config;
-            const horarioId = this.dataset.horarioId;
-
-            if (configType === 'modo_automatico') {
-                fetch('/api/toggle_modo_automatico', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ new_state: newState })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        // ¡Éxito! Actualiza el texto
-                        updateModoAutomaticoStatus(newState);
-                        console.log('Modo automático actualizado a: ' + newState);
-                    } else {
-                        // Falla: revierte el switch
-                        alert('Error al actualizar el modo: ' + data.message);
-                        this.classList.toggle('active');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error en fetch:', error);
-                    alert('Error de conexión.');
-                    this.classList.toggle('active');
-                });
-            }
+            
+            fetch('/api/toggle_modo_automatico', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_state: newState })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    updateModoAutomaticoStatus(newState);
+                    console.log('Modo automático actualizado a: ' + newState);
+                } else {
+                    alert('Error al actualizar el modo: ' + data.message);
+                    this.classList.toggle('active'); // Revertir
+                }
+            })
+            .catch(error => {
+                console.error('Error en fetch:', error);
+                alert('Error de conexión.');
+                this.classList.toggle('active'); // Revertir
+            });
         };
     });
 }
@@ -567,4 +598,80 @@ function initializeWaterUpdater() {
 
     // 2. Repetimos cada 10 segundos (igual que las otras tarjetas)
     setInterval(fetchWaterConsumption, 10000); 
+}
+
+/* ================================================ */
+/* === LÓGICA MODAL: APLICAR PERFIL A DISPOSITIVO === */
+/* ================================================ */
+function initializeAplicarPerfilModal() {
+    const modal = document.getElementById('applyProfileToDeviceModal');
+    if (!modal) return;
+
+    const openButtons = document.querySelectorAll('.open-apply-modal-btn');
+    const closeButton = document.getElementById('closeApplyModal');
+    const cancelButton = document.getElementById('cancelApplyModal');
+    const form = document.getElementById('applyProfileForm');
+    const deviceNameEl = document.getElementById('modalDeviceName');
+    const deviceIdInput = document.getElementById('modalDeviceId');
+    const profileSelect = document.getElementById('profileSelect');
+
+    const openModal = (deviceId, deviceName) => {
+        deviceNameEl.textContent = `Dispositivo: ${deviceName}`;
+        deviceIdInput.value = deviceId; // Guardamos el ID en el input oculto
+        profileSelect.value = ""; // Reseteamos el dropdown
+        modal.classList.remove('hidden');
+    };
+
+    const closeModal = () => modal.classList.add('hidden');
+
+    // Asignar evento a todos los botones "Aplicar Perfil"
+    openButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const deviceId = this.dataset.deviceId;
+            const deviceName = this.dataset.deviceName;
+            openModal(deviceId, deviceName);
+        });
+    });
+
+    // Eventos para cerrar el modal
+    closeButton.addEventListener('click', closeModal);
+    cancelButton.addEventListener('click', closeModal);
+
+    // Evento para enviar el formulario
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const perfilId = profileSelect.value;
+        const deviceId = deviceIdInput.value;
+
+        if (!perfilId) {
+            alert('Por favor, seleccione un perfil.');
+            return;
+        }
+
+        console.log(`Aplicando perfil ${perfilId} al dispositivo ${deviceId}`);
+        
+        fetch('/api/aplicar_perfil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                perfil_id: perfilId,
+                device_id: deviceId // <-- ¡Enviamos el ID del dispositivo!
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert(data.message); // Ej: "Perfil 'Huerto' aplicado a 'Jardin Central'."
+                closeModal();
+                window.location.reload(); // Recargamos para ver el cambio
+            } else {
+                alert('Error al aplicar: ' + data.message);
+            }
+        })
+        .catch(err => {
+            console.error('Error en fetch:', err);
+            alert('Error de conexión.');
+        });
+    });
 }

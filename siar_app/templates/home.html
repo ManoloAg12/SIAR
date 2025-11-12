@@ -46,7 +46,7 @@
         </div>
         {% else %}
         <div class="flex items-center justify-between">
-            <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-red-600 mt-1">Desconectado</p></div>
+            <div><p class="text-sm font-medium text-gray-600">Estado del Sistema</p><p class="text-2xl font-bold text-red-600 mt-1">Inabilitado</p></div>
             <div class="w-12 h-12 flex items-center justify-center bg-red-100 rounded-full"><i class="ri-wifi-off-line text-red-600 text-2xl"></i></div>
         </div>
         {% endif %}
@@ -105,7 +105,8 @@
         {% if dispositivos %}
             {% for disp in dispositivos %}
             
-            {% set esta_activo = (disp.estado_actual == 'online' or disp.estado_actual == 'regando') %}
+            {% set device_is_active = (disp.estado_actual == 'online' or disp.estado_actual == 'regando') %}
+            {% set button_disabled = (is_raining or not device_is_active) %}
 
             <div class="p-4 bg-gray-50 rounded-lg">
                 <div class="flex items-center justify-between">
@@ -121,12 +122,17 @@
                         </div>
                     </div>
                     
-                    <div class="custom-switch device-toggle-switch {% if esta_activo %}active{% endif %}" 
-                         data-device-id="{{ disp.id }}">
-                    </div>
+                    <button class="open-apply-modal-btn text-white px-3 py-1 rounded-lg text-sm
+                                 {% if button_disabled %} bg-gray-400 cursor-not-allowed opacity-70
+                                 {% else %} bg-blue-500 hover:bg-blue-600 {% endif %}" 
+                            data-device-id="{{ disp.id }}" 
+                            data-device-name="{{ disp.nombre_dispositivo }}"
+                            {% if button_disabled %}disabled{% endif %}>
+                        Aplicar Perfil
+                    </button>
                 </div>
 
-                {% if disp.estado_actual == 'offline_manual' %}
+                {% if disp.estado_actual == 'offline_manual' or disp.estado_actual == 'offline' %}
                 <div id="api-key-container-{{ disp.id }}" class="mt-4 p-3 bg-gray-200 rounded-lg flex items-center justify-between">
                     <div class="flex-1 overflow-hidden">
                         <p class="text-xs text-gray-600 font-medium">API KEY (Para el instalador):</p>
@@ -188,7 +194,16 @@
                             </p>
                         </div>
                     </div>
-                    <div class="custom-switch {% if configuracion_actual.modo_automatico %}active{% endif %}" data-config="modo_automatico"></div>
+                    {% set device_is_active = (device_status == 'online' or device_status == 'regando') %}
+                    {% set switch_disabled = (is_raining or not device_is_active) %}
+
+                    <div class="custom-switch 
+                        {% if configuracion_actual.modo_automatico and not switch_disabled %}active{% endif %} 
+                        {% if switch_disabled %}opacity-50 cursor-not-allowed{% endif %}"
+                        data-config="modo_automatico" 
+                        data-is-raining="{{ is_raining }}"
+                        data-device-status="{{ device_status }}">
+                    </div>
                 </div>
                 </div>
         {% else %}
@@ -240,7 +255,6 @@
                                 <p class="text-sm text-gray-600">{{ perfil.descripcion or 'Sin descripción' }} (Umbral: {{ perfil.umbral_humedad }}% / Duración: {{ perfil.duracion_riego_seg }}s)</p>
                             </div>
                         </div>
-                        <button class="apply-profile-btn bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 !rounded-button" data-id="{{ perfil.id }}">Aplicar</button>
                     </div>
                 {% endif %}
                 {% endfor %}
@@ -314,6 +328,40 @@
         </form>
     </div>
 </div>
+
+<div id="applyProfileToDeviceModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+        
+        <div class="flex items-start justify-between mb-4">
+            <div>
+                <h3 class="text-xl font-semibold text-gray-900">Aplicar Perfil</h3>
+                <p id="modalDeviceName" class="text-gray-600"></p> 
+            </div>
+            <button id="closeApplyModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        
+        <form id="applyProfileForm" class="space-y-4">
+            <input type="hidden" id="modalDeviceId" value=""> 
+            
+            <div>
+                <label for="profileSelect" class="block text-sm font-medium text-gray-700">Seleccione un perfil:</label>
+                <select id="profileSelect" name="perfil_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                    <option value="">Cargando perfiles...</option>
+                    {% if perfiles %}
+                        {% for perfil in perfiles %}
+                        <option value="{{ perfil.id }}">{{ perfil.nombre_perfil }} (Umbral: {{ perfil.umbral_humedad }}%)</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+            
+            <div class="flex justify-end space-x-4 pt-4">
+                <button type="button" id="cancelApplyModal" class="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="submit" class="px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/80">Aplicar a Dispositivo</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 
@@ -324,7 +372,7 @@
         initializeWaterChart();
         initializeSwitches();
         initializeTimeUpdate();
-        initializeProfileApplier();
+        initializeAplicarPerfilModal();
         initializeProfileModal(); 
         initializeLogoutModal(); // Esta llamada ya está en base.html
         initializeRefreshButton();

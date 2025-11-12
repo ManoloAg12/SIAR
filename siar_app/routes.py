@@ -335,43 +335,52 @@ def aplicar_perfil():
     try:
         data = request.json
         perfil_id = data.get('perfil_id')
-        
+        device_id = data.get('device_id') # <-- ¡NUEVO CAMPO!
+
+        if not perfil_id or not device_id:
+            return jsonify({"status": "error", "message": "Faltan perfil_id o device_id"}), 400
+
         perfil = tbl_perfiles_riego.query.get(perfil_id)
         if not perfil:
             return jsonify({"status": "error", "message": "Perfil no encontrado"}), 404
         
-        dispositivo_usuario = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
-        if not dispositivo_usuario:
-             return jsonify({"status": "error", "message": "Dispositivo no encontrado"}), 404
+        # ¡LÓGICA CORREGIDA!
+        # Buscamos el dispositivo por su ID y nos aseguramos de que pertenezca al usuario en sesión.
+        dispositivo_usuario = tbl_dispositivos.query.filter_by(
+            id=device_id, 
+            usuario_id=session['user_id']
+        ).first()
 
-        # Validar que el dispositivo esté online
+        if not dispositivo_usuario:
+             return jsonify({"status": "error", "message": "Dispositivo no encontrado o no autorizado"}), 404
+
+        # Validar que el dispositivo esté online (lógica existente)
         if dispositivo_usuario.estado_actual != 'online':
-            return jsonify({"status": "error", "message": f"Error: El dispositivo está '{dispositivo_usuario.estado_actual}'."}), 400
+             return jsonify({"status": "error", "message": f"Error: El dispositivo está '{dispositivo_usuario.estado_actual}'."}), 400
 
         config_activa = dispositivo_usuario.configuracion
 
         if config_activa:
-            print("Configuración existente encontrada. Actualizando...")
+            print(f"Actualizando config para DISPOSITIVO ID: {device_id}")
             config_activa.umbral_humedad_minima = perfil.umbral_humedad
             config_activa.duracion_riego_segundos = perfil.duracion_riego_seg
-            # --- ¡AÑADIR ESTE CAMPO! ---
             config_activa.frecuencia_minima_horas = perfil.frecuencia_minima_horas
             config_activa.perfil_activo_id = perfil.id
         else:
-            print("Configuración no encontrada. Creando una nueva...")
+            print(f"Creando nueva config para DISPOSITIVO ID: {device_id}")
             config_activa = tbl_configuracion(
                 dispositivo_id=dispositivo_usuario.id,
                 umbral_humedad_minima=perfil.umbral_humedad,
                 duracion_riego_segundos=perfil.duracion_riego_seg,
-                # --- ¡AÑADIR ESTE CAMPO! ---
                 frecuencia_minima_horas = perfil.frecuencia_minima_horas,
                 modo_automatico=True,
-                perfil_activo_id = perfil.id     
+                perfil_activo_id = perfil.id    
             )
             db.session.add(config_activa)
         
         db.session.commit()
-        return jsonify({"status": "ok", "message": f"Perfil '{perfil.nombre_perfil}' aplicado."})
+        return jsonify({"status": "ok", "message": f"Perfil '{perfil.nombre_perfil}' aplicado a '{dispositivo_usuario.nombre_dispositivo}'."})
+    
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -380,83 +389,100 @@ def aplicar_perfil():
 #dinamismo para las cartas
 # --- ¡REEMPLAZAR LA FUNCIÓN ANTIGUA POR ESTA! ---
 
+# En siar_app/routes.py
+# (Asegúrese de tener 'get_weather', 'tbl_usuarios', etc. importados)
+
 @bp.route('/api/get_dynamic_status')
 def get_dynamic_status():
     """
-    Devuelve el estado actualizado del dispositivo y la BBDD como JSON.
-    ¡NUEVO: También comprueba si el dispositivo se ha desconectado (timeout)!
+    Devuelve el estado actualizado.
+    ¡MODIFICADO! Ahora también devuelve el estado de lluvia.
     """
     if 'user_id' not in session:
         return jsonify({"status": "error", "message": "No autorizado"}), 401
         
     device_status_val = 'Desconocido'
     db_status_val = "Desconectado"
+    device_id_val = None
+    device_status_text = 'Desconocido'
+    is_raining_val = False # <-- ¡NUEVO!
     
     try:
+        usuario = tbl_usuarios.query.get(session['user_id']) # <-- ¡NUEVO! Necesitamos al usuario para el clima
+        if not usuario:
+             return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
+
         # 1. Revisar estado del dispositivo
         dispositivo = tbl_dispositivos.query.filter_by(usuario_id=session['user_id']).first()
+        
         if dispositivo:
+            device_id_val = dispositivo.id
             device_status_val = dispositivo.estado_actual
             
-            # --- ¡NUEVA LÓGICA DE TIMEOUT! ---
-            # Si el estado es "online" o "regando", verificamos su última lectura.
-            if device_status_val in ['online', 'regando']:
-                
-                # Buscamos la última lectura de humedad (que actúa como "heartbeat")
-                ultima_lectura = tbl_lecturas_humedad.query.filter_by(
-                    dispositivo_id=dispositivo.id
-                ).order_by(tbl_lecturas_humedad.timestamp.desc()).first()
-
-                if ultima_lectura:
-                    # Comparamos el timestamp de la lectura con la hora actual (ambos en UTC)
+            # --- Lógica de Timeout (existente) ---
+            if device_status_val in ['online', 'regando', 'offline']:
+                if dispositivo.last_heartbeat:
                     ahora_utc = datetime.now(timezone.utc)
-                    segundos_transcurridos = (ahora_utc - ultima_lectura.timestamp).total_seconds()
-
-                    # DEFINIMOS EL TIMEOUT (ej: 35 segundos)
-                    # El ESP32 reporta cada 10s, si falla 3 veces seguidas (30s),
-                    # damos 5s extra de margen.
-                    TIMEOUT_SEGUNDOS = 35 
+                    segundos_transcurridos = (ahora_utc - dispositivo.last_heartbeat).total_seconds()
+                    TIMEOUT_SEGUNDOS = 20 # 4s * 3 fallos + margen
 
                     if segundos_transcurridos > TIMEOUT_SEGUNDOS:
-                        # ¡El dispositivo se ha desconectado!
-                        print(f"TIMEOUT: Dispositivo {dispositivo.id} está offline. Última lectura hace {segundos_transcurridos}s.")
-                        
-                        # Forzamos el estado a 'offline' en la BBDD
-                        dispositivo.estado_actual = 'offline'
-                        db.session.commit()
-                        
-                        device_status_val = 'offline' # Actualizamos el valor a devolver
-                
+                        if device_status_val != 'offline':
+                            print(f"TIMEOUT: Dispositivo {dispositivo.id} está offline. Último latido hace {segundos_transcurridos}s.")
+                            dispositivo.estado_actual = 'offline' 
+                            db.session.commit()
+                        device_status_val = 'offline'
+                    else:
+                        if device_status_val == 'offline':
+                            device_status_val = 'online'
+                            dispositivo.estado_actual = 'online'
+                            db.session.commit()
                 else:
-                    # Si está 'online' pero NUNCA ha enviado una lectura.
-                    # (ej. recién conectado). Lo forzamos a 'offline'
-                    # si ha pasado más de 1 min sin lecturas.
                     segundos_creado = (datetime.now(timezone.utc) - dispositivo.fecha_creacion).total_seconds()
                     if segundos_creado > 60:
                         dispositivo.estado_actual = 'offline'
                         db.session.commit()
                         device_status_val = 'offline'
-            # --- FIN DE LA LÓGICA DE TIMEOUT ---
+            # --- Fin Timeout ---
             
         else:
             device_status_val = 'No Asignado'
+
+        # 2. Revisar estado de la BBDD
+        try:
+            db.session.execute(text('SELECT 1'))
+            db_status_val = "Conectado (SQLAlchemy)"
+        except Exception as e:
+            db_status_val = f"Error: {e}"
+
+        # 3. ¡NUEVO! Revisar estado del clima
+        if usuario.ciudad and usuario.pais:
+            weather_data = get_weather(usuario.ciudad, usuario.pais.codigo_iso)
+            if weather_data:
+                condiciones_lluvia = ['Rain', 'Drizzle', 'Thunderstorm', 'Snow']
+                if weather_data['main_condition'] in condiciones_lluvia:
+                    is_raining_val = True
             
     except Exception as e:
-        db.session.rollback() # Hacemos rollback en caso de error
-        print(f"Error al buscar dispositivo o comprobar timeout: {e}")
+        db.session.rollback()
+        print(f"Error al buscar dispositivo o clima: {e}")
         device_status_val = 'Error'
 
-    try:
-        # 2. Revisar estado de la BBDD
-        db.session.execute(text('SELECT 1'))
-        db_status_val = "Conectado (SQLAlchemy)"
-    except Exception as e:
-        db_status_val = f"Error: {e}"
 
-    # 3. Devolver ambos valores como JSON
+    # 4. Formatear el texto de estado
+    if device_status_val == 'offline': device_status_text = 'Offline'
+    elif device_status_val == 'online': device_status_text = 'Online'
+    elif device_status_val == 'regando': device_status_text = 'Regando'
+    elif device_status_val == 'offline_manual': device_status_text = 'Mantenimiento'
+    else: device_status_text = 'Desconocido'
+
+    # 5. Devolver todo como JSON
     return jsonify({
         "device_status": device_status_val,
-        "db_status": db_status_val
+        "db_status": db_status_val,
+        "device_id": device_id_val,
+        "device_status_text": device_status_text,
+        "is_raining": is_raining_val # <-- ¡NUEVO DATO!
     })
 
 
@@ -744,41 +770,46 @@ def get_configuracion():
     return jsonify(config_data)
 
 #Api para conocer las lecturas de la humedad del suelo#Api para conocer las lecturas de la humedad del suelo
+#Api para conocer las lecturas de la humedad del suelo
+# En siar_app/routes.py
+# (Asegúrese de tener 'datetime', 'timezone' importados)
+
 @bp.route('/api/lectura', methods=['POST'])
 def post_lectura():
     datos = request.json
     humedad = datos.get('humedad')
-    api_key = datos.get('device_key') # ¡NUEVO! Recibimos la API Key
+    api_key = datos.get('device_key')
     
     if humedad is None or api_key is None:
         return jsonify({"status": "error", "message": "Faltan 'humedad' o 'device_key'"}), 400
         
     try:
-        # Buscamos el dispositivo por su API Key
         dispositivo = tbl_dispositivos.query.filter_by(device_api_key=api_key).first()
-        
         if not dispositivo:
             return jsonify({"status": "error", "message": "Dispositivo no encontrado"}), 404
 
-        # ¡NUEVA VALIDACIÓN!
-        # Si el ESP32 envía 100 (un valor sospechoso)
-        # y el servidor YA sabe que está offline (por el timeout),
-        # NO guardamos la lectura.
-        if (humedad == 100 or humedad == 0) and dispositivo.estado_actual == 'offline':
-            print(f"Lectura ({humedad}%) de {dispositivo.nombre_dispositivo} RECHAZADA por estar 'offline'.")
-            # Devolvemos un 201 para que el ESP32 crea que funcionó,
-            # pero no guardamos nada.
-            return jsonify({"status": "recibido"}), 201
-
-        # Usamos el ID del dispositivo encontrado (NO un ID fijo)
-        nueva_lectura = tbl_lecturas_humedad(
-            dispositivo_id=dispositivo.id, # <-- ID dinámico
-            valor_humedad=humedad
-        )
-        db.session.add(nueva_lectura)
-        db.session.commit()
+        # --- ¡LÓGICA CORREGIDA! ---
         
-        print(f"Datos recibidos desde {dispositivo.nombre_dispositivo}: {datos}")
+        # 1. El latido SIEMPRE actualiza el estado y el timestamp del latido
+        if dispositivo.estado_actual != 'offline_manual':
+            dispositivo.estado_actual = 'online'
+        
+        dispositivo.last_heartbeat = datetime.now(timezone.utc) # <-- ¡ACTUALIZA EL LATIDO!
+
+        # 2. Decidimos si guardamos la lectura (evitar 0% o 100%)
+        if (humedad == 100 or humedad == 0):
+            print(f"Latido ({humedad}%) de {dispositivo.nombre_dispositivo} recibido. Heartbeat actualizado, pero DATO RECHAZADO.")
+        else:
+            # El dato es válido (ej: 45.3%), lo guardamos
+            nueva_lectura = tbl_lecturas_humedad(
+                dispositivo_id=dispositivo.id,
+                valor_humedad=humedad
+            )
+            db.session.add(nueva_lectura)
+            print(f"Datos (latido) ({humedad}%) recibidos y guardados.")
+
+        # 3. Guardamos los cambios (estado y/o lectura)
+        db.session.commit()
         return jsonify({"status": "recibido"}), 201
         
     except Exception as e:

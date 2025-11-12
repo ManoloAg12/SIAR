@@ -48,6 +48,7 @@ class tbl_dispositivos(db.Model):
     nombre_dispositivo = db.Column(db.String(100), nullable=False)
     device_api_key = db.Column(db.String(64), unique=True, nullable=False)
     estado_actual = db.Column(db.String(50), default='offline')
+    last_heartbeat = db.Column(db.DateTime(timezone=True), server_default=func.now())
     
     # Relaciones
     usuario = db.relationship('tbl_usuarios', backref=db.backref('dispositivos', lazy=True))
