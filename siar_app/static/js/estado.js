@@ -174,7 +174,7 @@ function initializeRefreshButton() {
     if (btn) {
         btn.addEventListener('click', () => {
             runDynamicUpdate(); // Llama a la función principal
-            alert('Panel de estado actualizado.');
+            window.location.reload();
         });
     }
 }
